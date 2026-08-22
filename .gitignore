@@ -1,0 +1,16 @@
+node_modules/
+*.log
+.superpowers/
+
+# local developer tooling: MCP servers, permissions and hook registrations
+# are the developer's own, not the plugin's
+.mcp.json
+.claude/
+.codegraph/
+
+# transient VS Code launcher artifacts, removed after the page opens
+askq-*.html
+.vscode/.askq-restore.json
+
+# sonar scanner output
+.scannerwork/

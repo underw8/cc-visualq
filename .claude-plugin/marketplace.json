@@ -1,0 +1,14 @@
+{
+  "name": "cc-visualq",
+  "owner": {
+    "name": "underw8"
+  },
+  "plugins": [
+    {
+      "name": "cc-visualq",
+      "source": "./",
+      "description": "Renders AskUserQuestion options as an HTML comparison chart (bars, grouped, matrix, scatter, or radar) in your terminal's embedded browser. Click a card to answer."
+    }
+  ],
+  "description": "Visualize Claude Code's AskUserQuestion options as HTML comparison charts."
+}
