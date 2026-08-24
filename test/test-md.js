@@ -40,6 +40,23 @@ console.log('1. block types');
 
   has('fenced code', renderMd('```\nx = 1\n```'),
     '<pre class="md-pre"><code>x = 1</code></pre>');
+
+  // A mermaid fence is the one fence that becomes a div rather than a pre, and
+  // the only thing that changes is the wrapper: the source is escaped exactly
+  // as any other fence, because the page reads it back with textContent.
+  const mer = renderMd('```mermaid\nflowchart LR\n  A[x] --> B[y]\n```');
+  has('mermaid fence becomes a div', mer, '<div class="mermaid">');
+  has('mermaid source escaped like any fence', mer, 'A[x] --&gt; B[y]');
+  lacks('mermaid is not a pre', mer, 'md-pre');
+  has('mermaid language is case-insensitive',
+    renderMd('```MERMAID\ngraph TD\n```'), '<div class="mermaid">');
+  lacks('another language stays a pre',
+    renderMd('```js\nconst a = 1;\n```'), 'class="mermaid"');
+  lacks('a bare fence stays a pre',
+    renderMd('```\nflowchart LR\n```'), 'class="mermaid"');
+  // The wrapper is chosen here, so an authored tag inside one cannot become one.
+  lacks('no live tag from a mermaid fence',
+    renderMd('```mermaid\n<img src=x onerror=alert(1)>\n```'), '<img');
   has('fence keeps newlines', renderMd('```\na\nb\n```'), '<code>a\nb</code>');
 }
 

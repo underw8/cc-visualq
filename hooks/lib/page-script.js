@@ -218,4 +218,46 @@ const pageScript = (nonce, count, waitMs) => `<script>
 })();
 </script>`;
 
-module.exports = { pageScript };
+// Emitted only when a briefing actually holds a mermaid block, because the
+// bundle is 3.4MB and every question would otherwise pay for it.
+//
+// Three things this must get right. `run` given a config object replaces the
+// defaults wholesale rather than merging, so omitting `querySelector` leaves
+// mermaid with nothing to select and it throws — and `suppressErrors` then
+// swallows the throw, leaving a blank page and no clue. `suppressErrors` also
+// does not stop the error card, only the exception, so bad syntax is caught by
+// parse() first. And the theme is read off the live custom properties rather
+// than restated here, so the diagram follows the page into dark mode and no
+// hex is written down twice.
+const mermaidScript = () => `<script src="/mermaid.min.js"></script>
+<script>
+(function () {
+  if (typeof mermaid === 'undefined') return;
+  var cs = getComputedStyle(document.documentElement);
+  var v = function (n) { return cs.getPropertyValue(n).trim(); };
+  mermaid.initialize({
+    startOnLoad: false, securityLevel: 'strict', htmlLabels: false,
+    theme: 'base', fontFamily: 'ui-sans-serif,-apple-system,system-ui,sans-serif',
+    themeVariables: {
+      background: v('--card'), primaryColor: v('--card'),
+      primaryTextColor: v('--fg'), primaryBorderColor: v('--mut'),
+      secondaryColor: v('--bg'), tertiaryColor: v('--bg'),
+      lineColor: v('--mut'), textColor: v('--fg')
+    }
+  });
+  // suppressErrors stops the throw, not the error card mermaid draws in its
+  // place — a mistyped diagram would replace itself with a red box. parse()
+  // under the same flag returns false and draws nothing, so every block is
+  // checked before run() is allowed near it. One that fails keeps its escaped
+  // source, and the styling that renders it as code.
+  var blocks = [].slice.call(document.querySelectorAll('.mermaid'));
+  Promise.all(blocks.map(function (el) {
+    return mermaid.parse(el.textContent, { suppressErrors: true })
+      .then(function (parsed) { if (parsed === false) el.setAttribute('data-bad', ''); });
+  })).then(function () {
+    mermaid.run({ querySelector: '.mermaid:not([data-bad])', suppressErrors: true });
+  });
+})();
+</script>`;
+
+module.exports = { pageScript, mermaidScript };

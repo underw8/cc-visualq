@@ -78,6 +78,8 @@ hooks/lib/launch.js              browser launcher selection and spawn
 hooks/lib/vscode.js              VS Code browser launcher, stub + settings
 hooks/lib/metrics.js             tag parsing and stripping, units, bar widths
 scripts/dev-hooks.js             dev-install registration, merged not written
+vendor/mermaid.min.js            pinned diagram library, served by the hook
+vendor/README.md                 version, hash, and what to re-check on a bump
 test/run-all.sh                  runs all eight suites
 test/test-md.js                  the subset and its escaping
 ```
@@ -130,6 +132,14 @@ hands back before it binds a port, so no browser appears and the terminal
 dialog asks unchanged — the page would otherwise show exactly what the dialog
 already does, at the cost of a window. `hasMetrics`/`hasBrief` from `stripTags`
 are what decide it; a page that always opened would make both dead fields.
+
+**A `PreToolUse` hook that exits 0 has no channel to the user but its JSON.**
+Both stdout and stderr are discarded on exit 0; exit 2 shows stderr to the model
+and blocks the call; any other code shows stderr to the user but discards the
+decision. So a diagnostic written to stderr beside a normal answer is never
+read by anyone — the only route is `systemMessage` in the JSON, which is shown
+to whoever is answering the question rather than to whoever maintains the rule.
+A lint was built on stderr and deleted for exactly this.
 
 **Emitting nothing is the safe fallback.** A `PreToolUse` command hook that times
 out or writes no JSON renders no decision, and the call continues through the
@@ -235,6 +245,17 @@ back to `var(--accent)` because the `bars` form emits no series class.
 should reach outward is unknowable without the model declaring polarity, so
 axes use the same normalization the bars use.
 
+**An axis-per-key form also refuses an unreadable spread.** `MIN_AXIS_PCT` is
+10: below that a mark sits where an absent value sits, and the reader cannot
+tell a small number from a gap. `barPercent` already floors at 2%, which is why
+the floor cannot be the answer — it makes the mark visible without making it
+distinguishable. Rescaling is the other non-answer: a log axis would render the
+50x gap as a short step and the chart would understate it. So `radar` and
+`scatter` hand off to `matrix`/`grouped`, where every value is printed. The gate
+needs the scale, so `pickForm` takes it as a third argument and opens the gate
+when it is absent — a caller that forgets it degrades to the old behaviour
+rather than losing every chart.
+
 **An axis-per-key form draws only keys every option carries.** Both read
 `shape.completeNumeric`, never `numericKeys`. A vertex at the centre or a
 dropped point stands for "no data" but reads as "the lowest value here", and
@@ -242,6 +263,19 @@ the reader has no way to tell which — so the form degrades instead (radar to
 matrix, scatter to grouped) and the table shows the gap as an em dash. `bars`
 omits the row, `grouped` and `matrix` print the dash; radar and scatter are
 the two that cannot say it, which is why they refuse the axis.
+
+**The radar's radius is set by `max-height`, not by the viewBox.** At `width:100%`
+the scale is `min(containerWidth/640, cap/360)` and the cap always wins, so the
+cap is the radius. Narrowing the viewBox to a square gains nothing — it only
+trims the letterbox — and costs the horizontal room a long key name needs.
+
+**Three things keep twenty labels apart on a four-by-four radar.** The key name
+sits at `1.22r`, clear of a value label that reaches just past `r`; it is
+anchored outward (`start` right of centre, `end` left, `middle` only where the
+axis is near-vertical) so it grows away from that value rather than back into
+it; and each series is offset along the axis normal. Four options across four
+axes is the most `AskUserQuestion` can produce, and it is the case to measure
+after touching any of the three — collisions do not show up in the markup.
 
 **Both direct-label their marks, and the labels wear text ink.** Two of the
 four light-mode series sit under 3:1 on the page surface, so hue alone cannot
@@ -307,6 +341,42 @@ while `askq.js` waits is worse than a briefing without hyperlinks.
 tables must agree. A block type in `md.js` and not the rule is never authored;
 one in the rule and not `md.js` renders as literal text. Neither errors.
 
+**Mermaid reads `textContent`, which is why the escape stays.** A ```` ```mermaid ````
+fence becomes `<div class="mermaid">` holding the same `esc()`-ed source every
+other fence gets — `--&gt;`, not `-->`. The browser decodes entities on
+`textContent`, so mermaid parses the authored text while the markup never held
+a tag. Handing it raw source would be the only way to lose that, and it buys
+nothing.
+
+**`mermaid.run(config)` replaces the defaults instead of merging them.** Passing
+`{suppressErrors: true}` alone drops `querySelector`, mermaid throws `Nodes and
+querySelector are both undefined`, and `suppressErrors` then swallows the throw
+— a blank page with nothing in the console. Both keys are always named
+together.
+
+**`suppressErrors` suppresses the exception, not the error card.** Mermaid still
+replaces a mistyped diagram with its own red box, which reads as the plugin
+breaking rather than the diagram being wrong. `parse(text, {suppressErrors:
+true})` returns `false` and draws nothing, so every block is parsed first and
+only what passes reaches `run` — the selector is
+`.mermaid:not([data-bad])`. That, not `suppressErrors`, is what makes a bad
+fence degrade to its own source.
+
+**The bundle loads only for a page that holds a diagram.** It is 3.4MB; every
+question would otherwise pay for it. `renderPage` tests the assembled body for
+`class="mermaid"` rather than threading a flag out of `renderMd` through two
+callers. The library is committed rather than installed because
+`claude plugin install` copies files and never runs `npm install`, and it is
+served from the hook rather than a CDN so no part of a briefing leaves the
+machine. A missing bundle 404s and costs the diagram, not the question.
+
+**A `.mermaid` block is styled as code until mermaid claims it.** The
+`:not([data-processed])` rule is what makes a diagram that never renders — bad
+syntax, absent bundle, blocked script — degrade to readable source instead of an
+empty box. The reduced-motion reset needs no mermaid clause: it already wears
+`!important` on `*`, which beats mermaid's injected stylesheet whatever the
+order.
+
 **`code` cannot open a URL, only a file.** Six `vscode://vscode.simple-browser/…`
 forms produced zero fetches against a live server, and `code -r`, `--open-url`,
 a bare URL and `-g` against an http URL produced zero between them. Simple
@@ -342,7 +412,8 @@ after changing the decision shape:
 
 1. Each form renders as named: `{chart: grouped|matrix|scatter|radar}` with
    enough dimensions, and one deliberately under-dimensioned case to see the
-   documented degradation.
+   documented degradation. Also one `radar` whose options span 50x on a key
+   (`{size:3.4mb}` against `{size:170mb}`), which must arrive as a matrix.
 2. Options with no tag: no page, dialog unchanged.
 3. With `askq.js` wired in, clicking a card answers the tool; typing in
    "Something else" answers with that text verbatim; notes arrive alongside
@@ -370,6 +441,17 @@ after changing the decision shape:
    containing `<img src=x onerror=alert(1)>` renders there as literal text.
 10. The countdown is absent until the last minute, then counts down to the
    unchanged `Expired — answer in the terminal.`
+11. A four-option radar over four axes — twenty labels, the most the tool can
+   produce. No two overlap and none is clipped; check with long key names, since
+   a collision never shows up in the markup.
+12. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
+   the page — check it in both light and dark, since the theme is read off the
+   custom properties at load and not re-read on a scheme change. A second fence
+   with deliberately broken syntax stays on screen as its own source with no
+   error card. A question with no fence must not request `/mermaid.min.js` at
+   all: 3.4MB is the cost of getting that gate wrong. Then delete
+   `vendor/mermaid.min.js` and ask again — the diagram degrades to source and
+   the cards still answer.
 
 Suites stub `cmux`, so a real launch is still worth one by-hand check: run
 `openUrl` against a temp file from a cmux session and confirm `cmux identify`

@@ -19,6 +19,8 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { openUrl } = require('./lib/launch.js');
 const { stripTags } = require('./lib/metrics.js');
 const { renderPage } = require('./lib/render.js');
@@ -89,6 +91,23 @@ function main(raw) {
       arrived = true;
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(html);
+    }
+    // Served from the tree, not a CDN, so nothing about the question leaves the
+    // machine. Read on demand: a page with no diagram never asks.
+    if (req.method === 'GET' && req.url.startsWith('/mermaid.min.js')) {
+      try {
+        const bundle = fs.readFileSync(path.join(__dirname, '..', 'vendor', 'mermaid.min.js'));
+        res.writeHead(200, {
+          'content-type': 'text/javascript; charset=utf-8',
+          'content-length': bundle.length,
+        });
+        return res.end(bundle);
+      } catch {
+        // A missing bundle costs the diagram, not the question: the block stays
+        // on screen as its own source and the cards answer as usual.
+        res.writeHead(404).end();
+        return;
+      }
     }
     // The page polls this to notice the hook is gone — aborted with Ctrl-C,
     // or answered in the terminal — and stop waiting on a dead server.
