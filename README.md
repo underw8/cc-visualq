@@ -49,23 +49,17 @@ The reserved `chart` key picks the form, declared on the first option:
 | `bars` (default) | one bar per metric, inside each option card | nothing |
 | `grouped` | one block per metric, options side by side | ≥1 metric |
 | `matrix` | options as rows, metrics as columns, exact values | ≥1 metric |
-| `scatter` | two metrics as axes, options as points | ≥2 numeric metrics every option has a value for, none under 10% of its axis |
-| `radar` | one polygon per option across all axes | ≥3 numeric metrics every option has a value for, none under 10% of its axis |
 
-Radar and scatter both need every option to carry every axis they draw. A
-vertex at the centre, or a missing point, would read as the lowest value
-rather than as absent data, so one option missing one axis degrades the whole
-chart rather than misreporting it. `bars`, `grouped` and `matrix` say it
-plainly instead: no row, or an em dash.
+A form whose data can't carry it degrades quietly rather than drawing an empty
+frame: `grouped` and `matrix` fall back to `bars` when no option carries a
+metric at all.
 
-They also need their values within reach of one another. One option fifty
-times another puts the small one within a couple of pixels of the origin —
-where an absent value sits — so the same refusal applies. Compressing the axis
-to fit both would understate the gap, so the form steps back to a table where
-both numbers are printed.
-
-A form whose data can't carry it degrades quietly rather than drawing a broken
-axis: radar → matrix, scatter → grouped, grouped and matrix → bars.
+Every form prints each value as text beside its bar, so a key one option has no
+value for reads as an em dash rather than as a mark at zero. Axis-per-key forms
+— radar, scatter — were dropped for exactly that: a vertex at the centre and a
+missing vertex look identical, and `AskUserQuestion` caps a question at four
+options, so the largest possible dataset is sixteen numbers, which a table
+states outright.
 
 Bars scale **per key**: each metric's largest value across the options is full
 width, so `bundle` and `latency` never share a scale.

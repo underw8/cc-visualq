@@ -100,8 +100,8 @@ const STYLES = `
            padding:1rem 1.1rem; margin:0 0 1rem; overflow-x:auto; }
   .chart h4 { margin:0 0 .35rem; font-size:.8rem; font-weight:650; color:var(--mut); }
   .gblock + .gblock { margin-top:.9rem; }
-  /* One custom property per option slot; every series-colored mark below
-     reads var(--c), so a fifth form adds no color rules. */
+  /* One custom property per option slot; every series-colored mark reads
+     var(--c), so a new mark costs one rule and not one per option slot. */
   .s0 { --c:var(--s0); } .s1 { --c:var(--s1); }
   .s2 { --c:var(--s2); } .s3 { --c:var(--s3); }
   table.matrix { width:100%; border-collapse:collapse; font-size:.82rem; }
@@ -119,34 +119,6 @@ const STYLES = `
           transition:opacity var(--mid); }
   table.matrix tbody tr:hover .fill { opacity:.34; }
   .cv { position:relative; }
-  /* The cap bounds the drawing, not the viewBox: the scale is
-     min(width/640, cap/360) and the cap always wins, so this is the radar's
-     radius and the scatter's plot area. */
-  .chart svg { display:block; width:100%; height:auto; max-height:28rem; }
-  .axis { stroke:var(--line); stroke-width:1.5; }
-  /* --line is already the one-shade-off-surface step, so a hairline in it is
-     recessive without dimming. Radar rings are polygons: fill:none is what
-     keeps them from painting over the data behind them. */
-  .gridline { stroke:var(--line); stroke-width:1; fill:none; }
-  .atick { fill:var(--mut); font-size:10px; font-variant-numeric:tabular-nums; }
-  .alabel { fill:var(--mut); font-size:12px; }
-  .plabel { fill:var(--fg); font-size:12px; font-weight:600; }
-  /* Radar vertex values. Text wears a text token, never the series color:
-     identity comes from the mark beside it, magnitude from the number. */
-  .vlabel { fill:var(--fg); font-size:10px; font-variant-numeric:tabular-nums; }
-  /* transform-box keeps the scale about the mark's own centre, so a hovered
-     point grows in place rather than sliding toward the origin. */
-  circle { fill:var(--c); transform-box:fill-box; transform-origin:center;
-           transition:transform var(--mid) var(--ease); }
-  circle:hover { transform:scale(1.45); }
-  .poly { fill:var(--c); stroke:var(--c); fill-opacity:.16; stroke-width:2;
-          transition:fill-opacity var(--mid); }
-  .poly:hover { fill-opacity:.32; }
-  .legend { display:flex; flex-wrap:wrap; gap:.35rem 1rem; margin-top:.6rem;
-            font-size:.78rem; color:var(--mut); }
-  .lg { display:inline-flex; align-items:center; gap:.35rem; }
-  .lg i { width:.7rem; height:.7rem; border-radius:2px; display:inline-block;
-          background:var(--c); }
   .card.other { cursor:text; }
   .card.other input { width:100%; font:inherit; font-size:.875rem; color:inherit;
         background:transparent; border:0; border-bottom:1px solid var(--line);
@@ -286,7 +258,7 @@ function renderQuestion(q, qi) {
   let form = 'bars';
   let chart = '';
   try {
-    const picked = pickForm(requested, options, scale);
+    const picked = pickForm(requested, options);
     chart = renderChart(picked.name, options, scale, picked.shape);
     form = picked.name;
   } catch {

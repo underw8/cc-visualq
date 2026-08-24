@@ -71,8 +71,8 @@ hooks/askq-rule.md               option-authoring rule, injected at session star
 hooks/askq.js              loopback server, blocks, answers the tool
 hooks/lib/render.js              the page: styles, cards, assembly
 hooks/lib/page-script.js         the browser script the page runs
-hooks/lib/charts.js              the five chart forms and form selection
-hooks/lib/esc.js                 HTML/SVG escaping, shared by render and charts
+hooks/lib/charts.js              the three chart forms and form selection
+hooks/lib/esc.js                 HTML escaping, shared by render and charts
 hooks/lib/md.js                  the briefing markdown subset
 hooks/lib/launch.js              browser launcher selection and spawn
 hooks/lib/vscode.js              VS Code browser launcher, stub + settings
@@ -213,8 +213,19 @@ the question heading the footer's jump link names, alike.
 **`chart` is a reserved key in the metric tag.** It names the comparison form,
 is stripped before rendering, and an option whose genuine metric is called
 `chart` loses it. The first option declaring it wins; later declarations are
-ignored. A form whose data can't carry it degrades silently — radar to matrix,
-scatter to grouped, grouped and matrix to bars.
+ignored. A form whose data can't carry it degrades silently — `grouped` and
+`matrix` to `bars`. A retired name (`radar`, `scatter`) is an unknown name and
+lands on `bars` too, so an option authored against an older rule still renders.
+
+**No axis-per-key form, and the reasoning is the reason.** Radar and scatter
+were built and removed. A vertex at the centre and a missing vertex look
+identical, so both refused any key an option lacked and any spread over 10:1 —
+which meant the honest cases were the ones they declined. `AskUserQuestion`
+caps a question at four options and the rule caps keys at four, so the largest
+possible dataset is sixteen numbers, and `matrix` states all sixteen. Adding one
+back means re-adding the `completeNumeric` gate, the readability gate, finite
+clamping on every SVG coordinate, and a manual check for label collisions that
+never show up in the markup.
 
 **An ambiguous unit takes its dimension from its siblings.** `m` is minutes in
 a duration and millions in a count; `b` is bytes or billions. `resolveDimensions`
@@ -237,63 +248,18 @@ is 4 for that reason, and its modulo is a backstop rather than a real cycle. A
 tool cannot produce.
 
 **Series colors flow through one `--c` custom property.** `.s0`–`.s3` assign it;
-every colored mark (`.track i`, `.fill`, `circle`, `.poly`, `.lg i`) reads
-`var(--c)`. A new mark costs one rule, not one per option slot. `.track i` falls
+every colored mark (`.track i`, `.fill`) reads `var(--c)`. A new mark costs one
+rule, not one per option slot. `.track i` falls
 back to `var(--accent)` because the `bars` form emits no series class.
 
-**Radar and scatter plot magnitude, not goodness.** Whether a large `cost`
-should reach outward is unknowable without the model declaring polarity, so
-axes use the same normalization the bars use.
-
-**An axis-per-key form also refuses an unreadable spread.** `MIN_AXIS_PCT` is
-10: below that a mark sits where an absent value sits, and the reader cannot
-tell a small number from a gap. `barPercent` already floors at 2%, which is why
-the floor cannot be the answer — it makes the mark visible without making it
-distinguishable. Rescaling is the other non-answer: a log axis would render the
-50x gap as a short step and the chart would understate it. So `radar` and
-`scatter` hand off to `matrix`/`grouped`, where every value is printed. The gate
-needs the scale, so `pickForm` takes it as a third argument and opens the gate
-when it is absent — a caller that forgets it degrades to the old behaviour
-rather than losing every chart.
-
-**An axis-per-key form draws only keys every option carries.** Both read
-`shape.completeNumeric`, never `numericKeys`. A vertex at the centre or a
-dropped point stands for "no data" but reads as "the lowest value here", and
-the reader has no way to tell which — so the form degrades instead (radar to
-matrix, scatter to grouped) and the table shows the gap as an em dash. `bars`
-omits the row, `grouped` and `matrix` print the dash; radar and scatter are
-the two that cannot say it, which is why they refuse the axis.
-
-**The radar's radius is set by `max-height`, not by the viewBox.** At `width:100%`
-the scale is `min(containerWidth/640, cap/360)` and the cap always wins, so the
-cap is the radius. Narrowing the viewBox to a square gains nothing — it only
-trims the letterbox — and costs the horizontal room a long key name needs.
-
-**Three things keep twenty labels apart on a four-by-four radar.** The key name
-sits at `1.22r`, clear of a value label that reaches just past `r`; it is
-anchored outward (`start` right of centre, `end` left, `middle` only where the
-axis is near-vertical) so it grows away from that value rather than back into
-it; and each series is offset along the axis normal. Four options across four
-axes is the most `AskUserQuestion` can produce, and it is the case to measure
-after touching any of the three — collisions do not show up in the markup.
-
-**Both direct-label their marks, and the labels wear text ink.** Two of the
-four light-mode series sit under 3:1 on the page surface, so hue alone cannot
-carry identity: scatter labels each point, radar labels every vertex. Same-axis
-vertices are collinear, so radar offsets each series along the axis normal —
-that fixed 12px separation is what keeps four labels apart when the values
-nearly coincide. A label in `--fg`; never in the series color.
-
 **The series palette is validated, not chosen.** Under the all-pairs rule the
-comparison forms need (radar and scatter compare every pair, not just
-neighbours), only two four-hue sets clear colorblind and normal-vision
+comparison forms need — `grouped` puts four bars in one block and `matrix` four
+rows in one table, so any pair may be compared — only two four-hue sets clear
+colorblind and normal-vision
 separation on the dark surface — the shipped one is one of them. Editing a
 `--s0`–`--s3` hex by eye reintroduces a pair no reader can separate. Re-run the
 bundled `dataviz` skill's `validate_palette.js` against both surfaces with
 `--pairs all` instead.
-
-**Every number reaching an SVG attribute is clamped finite.** `NaN` in a path
-blanks the shape silently instead of erroring, which reads as a data bug.
 
 **Motion is CSS, in one block, on three tokens.** `--ease`, `--fast` and
 `--mid` are the whole vocabulary: a new hover or transition reuses them rather
@@ -410,10 +376,9 @@ there is nothing to drive. No suite covers what Claude Code does with the hook's
 output; that needs a question asked in a real interactive session. Check by hand
 after changing the decision shape:
 
-1. Each form renders as named: `{chart: grouped|matrix|scatter|radar}` with
-   enough dimensions, and one deliberately under-dimensioned case to see the
-   documented degradation. Also one `radar` whose options span 50x on a key
-   (`{size:3.4mb}` against `{size:170mb}`), which must arrive as a matrix.
+1. Each form renders as named: `{chart: grouped|matrix}` with enough
+   dimensions, and one option carrying no value for a shared key, which must
+   print an em dash. A retired name (`{chart: radar}`) must arrive as bars.
 2. Options with no tag: no page, dialog unchanged.
 3. With `askq.js` wired in, clicking a card answers the tool; typing in
    "Something else" answers with that text verbatim; notes arrive alongside
@@ -441,10 +406,7 @@ after changing the decision shape:
    containing `<img src=x onerror=alert(1)>` renders there as literal text.
 10. The countdown is absent until the last minute, then counts down to the
    unchanged `Expired — answer in the terminal.`
-11. A four-option radar over four axes — twenty labels, the most the tool can
-   produce. No two overlap and none is clipped; check with long key names, since
-   a collision never shows up in the markup.
-12. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
+11. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
    the page — check it in both light and dark, since the theme is read off the
    custom properties at load and not re-read on a scheme change. A second fence
    with deliberately broken syntax stays on screen as its own source with no

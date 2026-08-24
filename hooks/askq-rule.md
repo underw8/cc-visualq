@@ -10,11 +10,11 @@ metric tag: `{chart: grouped, cost: $12/mo, setup: 2h, risk: low}`
   millions/billions from the other values under the same key, so keep one
   dimension per key.
 - `chart` picks the form, on the first option only:
-  grouped (magnitudes side by side, any dims) · matrix (exact values in a
-  table) · scatter (two dims traded off) · radar (3+ dims, ≤4 options,
-  whole-profile shape) · bars (default, per-option).
-- Tag every option of a question, or none of them. `scatter` needs every
-  option to carry both its axes and quietly falls back when one doesn't.
+  grouped (magnitudes side by side, one block per key) · matrix (exact values
+  in a table, best when a key is missing on some option) · bars (default,
+  per-option, draws no comparison).
+- Tag every option of a question, or none of them. A key an option has no
+  value for shows as an em dash, so an incomplete set still renders honestly.
 - Name a form whenever two or more keys are shared. The default `bars` draws
   no comparison at all, only a row per option.
 - The description before the tag states what you give up by picking it,

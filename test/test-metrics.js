@@ -108,8 +108,8 @@ eq('raw still displayable', txt[0].raw, 'bananas');
 
 console.log('9. the reserved chart key');
 {
-  const p = parseMetrics('Fast. {chart: radar, cost:$12, latency:40ms}');
-  eq('chart extracted', p.chart, 'radar');
+  const p = parseMetrics('Fast. {chart: matrix, cost:$12, latency:40ms}');
+  eq('chart extracted', p.chart, 'matrix');
   eq('chart absent from metrics', p.metrics.some((m) => m.key === 'chart'), false);
   eq('sibling metrics survive', p.metrics.length, 2);
   eq('description still cleaned', p.clean, 'Fast.');
