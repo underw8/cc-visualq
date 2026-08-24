@@ -31,10 +31,14 @@ const STYLES = `
          font:15px/1.55 ui-sans-serif,-apple-system,system-ui,sans-serif; }
   main { max-width:64rem; margin:0 auto; }
   section + section { margin-top:2.5rem; padding-top:2rem; border-top:1px solid var(--line); }
-  /* The serif stops at the question. Cards, charts and briefings stay sans:
-     a serif face in chart chrome costs legibility at small sizes. */
-  h2 { font-family:ui-serif,Georgia,"Times New Roman",serif; font-weight:600;
-       font-size:1.35rem; margin:0 0 1.25rem; letter-spacing:-.01em; }
+  /* The serif stops at the question. Cards, charts and briefings stay sans: a
+     serif face in chart chrome costs legibility at small sizes. At regular
+     weight, not bold — the face is the editorial note, and size alone
+     carries the hierarchy. Twice the body text, in em off the inherited size
+     rather than rem: rem would double the root, not the 15px the page is
+     actually set in. */
+  h2 { font-family:ui-serif,Georgia,"Times New Roman",serif; font-weight:400;
+       font-size:2em; margin:0 0 1.25rem; letter-spacing:-.01em; }
   h2 em { color:var(--mut); font-weight:400; font-size:.85rem; font-style:normal; }
   h3 { font-size:.95rem; font-weight:650; margin:0 0 .4rem; }
   .grid { display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(21rem,1fr)); }
@@ -146,14 +150,17 @@ const STYLES = `
            border-radius:0; padding:.75rem 0 0; margin:.85rem 0 0; }
   .brief > :first-child { margin-top:0; }
   .brief > :last-child { margin-bottom:0; }
+  /* Prose is one size throughout a briefing. A lead paragraph set larger than
+     the paragraph under it reads as two type scales in one block; code and
+     tables step down because they are data, not prose. */
   .md-p { margin:0 0 .7rem; font-size:.875rem; }
-  /* The question briefing opens with the TL;DR, so it carries more weight
-     than the detail under it. Cards are summaries already. */
-  section > .brief > .md-p:first-child { font-size:1.02rem; line-height:1.5;
-           color:var(--fg); margin-bottom:.9rem; }
+  /* The question briefing opens with the TL;DR, so it gets the gap that sets
+     it off from the detail. Spacing only: prose is one size and one ink
+     throughout, so nothing here changes either. */
+  section > .brief > .md-p:first-child { margin-bottom:.9rem; }
   .brief h4 { margin:1rem 0 .4rem; font-size:.8rem; font-weight:650;
            color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
-  .md-list { margin:0 0 .7rem; padding-left:1.1rem; font-size:.85rem; }
+  .md-list { margin:0 0 .7rem; padding-left:1.1rem; font-size:.875rem; }
   .md-list li { margin:.15rem 0; }
   /* A trade-off list. The glyph carries the valence and the color only
      reinforces it: red and green collapse under deuteranopia, plus and minus
