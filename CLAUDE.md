@@ -297,6 +297,15 @@ every colored mark (`.track i`, `.fill`) reads `var(--c)`. A new mark costs one
 rule, not one per option slot. `.track i` falls
 back to `var(--accent)` because the `bars` form emits no series class.
 
+**`--accent` is ink at one site and fill at another, so the fill has its own
+ink.** Light enough to read as text on a card is too light for white text on top
+of it: `#fff` over the dark accent measures 2.62:1, under the 4.5:1 floor the
+Send button's label needs. `--on-accent` is that ink and `#send` and
+`.tick::after` are the two sites that read it; a third filled accent site must
+read it too. It is one value rather than a `light-dark()` pair because the
+accent is mid-tone in both schemes (5.05:1 light, 7.50:1 dark) — an accent that
+flipped lightness between schemes would need the pair.
+
 **The series palette is validated, not chosen.** Under the all-pairs rule the
 comparison forms need — `grouped` puts four bars in one block and `matrix` four
 rows in one table, so any pair may be compared — only two four-hue sets clear

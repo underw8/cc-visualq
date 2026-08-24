@@ -18,6 +18,11 @@ const STYLES = `
      than losing the token altogether.
      --ok is the accent, not a green: selection means chosen, not successful,
      and a green tick beside the green --s3 series read as a status light.
+     --accent is ink at one site and fill at another, and those pull opposite
+     ways: #fff over the dark accent measures 2.62:1. --on-accent is the ink for
+     a filled accent, read by #send and .tick::after, and any third filled site.
+     One value serves both schemes because the accent is mid-tone in each
+     (5.05:1 light, 7.50:1 dark); a scheme-flipping accent would need a pair.
      --s3 repeats across schemes because that green clears both surfaces. */
   :root { color-scheme: light dark; --ease:cubic-bezier(.2,.7,.3,1);
           --fast:.12s; --mid:.22s;
@@ -33,7 +38,8 @@ const STYLES = `
           --s2:#e87ba4; --s2:light-dark(#e87ba4,#d55181);
           --s3:#008300;
           --pro:#046b34; --pro:light-dark(#046b34,#3fbf72);
-          --con:#b3261e; --con:light-dark(#b3261e,#f2837a); }
+          --con:#b3261e; --con:light-dark(#b3261e,#f2837a);
+          --on-accent:#0b0b0b; }
   /* The toggle writes one property and every token above follows it. */
   :root[data-scheme="light"] { color-scheme: light; }
   :root[data-scheme="dark"] { color-scheme: dark; }
@@ -74,7 +80,7 @@ const STYLES = `
   .card[aria-pressed="true"] .tick, .card[aria-checked="true"] .tick {
                 background:var(--ok); border-color:var(--ok); }
   .card[aria-pressed="true"] .tick::after, .card[aria-checked="true"] .tick::after {
-                content:"\\2713"; color:#fff; font-size:.7rem;
+                content:"\\2713"; color:var(--on-accent); font-size:.7rem;
                 position:absolute; inset:0; display:grid; place-items:center;
                 animation:pop .18s var(--ease); }
   .card .kbd { position:absolute; top:.8rem; right:2.4rem; width:1.15rem; height:1.15rem;
@@ -101,7 +107,7 @@ const STYLES = `
            backdrop-filter:blur(8px);
            border-top:1px solid var(--line); display:flex; align-items:center; gap:1rem; }
   #send { font:inherit; font-weight:600; padding:.5rem 1.4rem; border-radius:7px;
-          border:0; background:var(--accent); color:#fff; cursor:pointer;
+          border:0; background:var(--accent); color:var(--on-accent); cursor:pointer;
           transition:background-color var(--mid), transform var(--fast) var(--ease),
                      box-shadow var(--fast), opacity var(--mid); }
   #send:hover:not([disabled]) { background:color-mix(in srgb, var(--accent) 88%, #000);

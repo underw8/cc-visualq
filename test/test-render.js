@@ -403,5 +403,21 @@ console.log('18. the scheme toggle');
     (withDiagram.match(/querySelector: '\.mermaid:not\(\[data-bad\]\)', suppressErrors: true/g) || []).length, 1);
 }
 
+console.log('19. a filled accent has its own ink');
+{
+  const page = renderPage(Q([{ label: 'A', description: 'x. {c:1}' }]),
+    { nonce: 'ab'.repeat(16), waitMs: 1000 });
+  // --accent is ink on a card and fill under a glyph, and those pull opposite
+  // ways: #fff over the dark accent measures 2.62:1, under the 4.5:1 floor for
+  // the button label. One value clears both schemes here (5.05:1 and 7.50:1)
+  // because the accent is mid-tone in each.
+  has('the ink token exists', page, '--on-accent:#0b0b0b;');
+  has('the send button reads it', page, 'background:var(--accent); color:var(--on-accent)');
+  has('and so does the tick', page, 'color:var(--on-accent)');
+  lacks('no filled accent site hardcodes white', page, 'color:#fff;');
+  // A single value, deliberately: a scheme-flipping accent would need a pair.
+  lacks('and it needs no light-dark pair', page, '--on-accent:light-dark(');
+}
+
 console.log(fail ? 'FAIL' : 'PASS');
 process.exit(fail);
