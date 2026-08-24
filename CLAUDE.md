@@ -301,6 +301,20 @@ a sandboxed iframe renders it inertly but cannot report its height, forcing
 fixed-height cards, and a tag allowlist means owning a sanitizer and its
 bypasses against text a prompt injection can reach.
 
+**A `-` list is an ordinary list; one `+` in the run makes it a trade-off
+list.** `-` is the normal bullet marker, so styling every `-` item as a
+drawback would turn every briefing list into a list of drawbacks. `readList`
+collects the whole run before deciding, because the deciding `+` can be its
+last line. Ordered lists never qualify: `1.` carries sequence, not valence.
+
+**The pro/con glyph carries the valence and the color only reinforces it.**
+Red and green collapse under deuteranopia, `+` and `−` do not, so the rule that
+matters is `content`, not `color`. `--pro`/`--con` are checked above 4.5:1 on
+`--card` in both schemes and the item text keeps its inherited ink, so a card of
+cons is no harder to read than a card of pros. The con glyph is U+2212, not a
+hyphen: it matches the plus in width, which is what keeps a mixed run's text on
+one left edge.
+
 **`md.js` escapes before it substitutes.** `esc()` runs on the raw line and the
 inline patterns run on the escaped string, so a model-written `<b>` arrives as
 `&lt;b&gt;` and cannot be revived. Reversed, an authored tag passes through
@@ -309,8 +323,8 @@ scheme validation against `javascript:`, and a page that can navigate away
 while `askq.js` waits is worse than a briefing without hyperlinks.
 
 **The authoring rule is a four-place contract.** `hooks/askq-rule.md`,
-`UNITS`/`ORDINALS` in `lib/metrics.js`, the subset in `lib/md.js`, and README's
-tables must agree. A block type in `md.js` and not the rule is never authored;
+`UNITS`/`ORDINALS` in `lib/metrics.js`, the subset in `lib/md.js` (including
+the `+`/`-` trade-off run), and README's tables must agree. A block type in `md.js` and not the rule is never authored;
 one in the rule and not `md.js` renders as literal text. Neither errors.
 
 **Mermaid reads `textContent`, which is why the escape stays.** A ```` ```mermaid ````
@@ -395,7 +409,9 @@ after changing the decision shape:
    pressed.
 5. Break the hook (`exit 1` at the top). The dialog still answers normally.
 6. A question briefing renders above the chart and an option briefing inside
-   its card, below the bars. A question carrying a briefing and no metric tag
+   its card, below the bars. An option briefing carrying a `+`/`-` run draws
+   the plus and minus glyphs in both schemes, and a `-`-only run beside it
+   still draws ordinary bullets. A question carrying a briefing and no metric tag
    still opens a page. A question with neither is unchanged. With
    `askq.js` wired in, click a card whose briefing contains a table and
    a fenced block: the answer arrives keyed to the stripped question, and the

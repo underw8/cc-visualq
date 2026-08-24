@@ -15,13 +15,15 @@ const STYLES = `
   :root { color-scheme: light dark; --ease:cubic-bezier(.2,.7,.3,1);
           --fast:.12s; --mid:.22s; --fg:#1f1e1c; --mut:#6b6a63; --line:#e5e3d9;
           --accent:#c96442; --card:#faf9f5; --bg:#f2f0e9; --ok:#c96442;
-          --s0:#2a78d6; --s1:#eda100; --s2:#e87ba4; --s3:#008300; }
+          --s0:#2a78d6; --s1:#eda100; --s2:#e87ba4; --s3:#008300;
+          --pro:#046b34; --con:#b3261e; }
   @media (prefers-color-scheme: dark) {
     /* --s3 intentionally repeats the light value: that green clears both
        surfaces, so the repeat is not a leftover. */
     :root { --fg:#f5f4ef; --mut:#a3a19a; --line:#35352f;
             --accent:#e08a68; --card:#262624; --bg:#191917; --ok:#e08a68;
-            --s0:#3987e5; --s1:#c98500; --s2:#d55181; --s3:#008300; }
+            --s0:#3987e5; --s1:#c98500; --s2:#d55181; --s3:#008300;
+            --pro:#3fbf72; --con:#f2837a; }
   }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; }
@@ -153,6 +155,16 @@ const STYLES = `
            color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
   .md-list { margin:0 0 .7rem; padding-left:1.1rem; font-size:.85rem; }
   .md-list li { margin:.15rem 0; }
+  /* A trade-off list. The glyph carries the valence and the color only
+     reinforces it: red and green collapse under deuteranopia, plus and minus
+     do not. Text keeps its inherited ink, so a card of cons is no harder to
+     read than a card of pros. */
+  .procon { list-style:none; padding-left:0; }
+  .procon li { display:grid; grid-template-columns:.95rem 1fr; align-items:baseline; }
+  .procon li::before { font-weight:700; }
+  .procon .pro::before { content:"+"; color:var(--pro); }
+  /* U+2212, not a hyphen: it matches the plus in width and optical weight. */
+  .procon .con::before { content:"\\2212"; color:var(--con); }
   .card .md-list { color:var(--mut); }
   .md-pre { margin:0 0 .8rem; padding:.7rem .85rem; overflow-x:auto; font-size:.8rem;
            background:color-mix(in srgb, var(--fg) 5%, transparent); border-radius:7px; }

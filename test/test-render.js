@@ -324,5 +324,33 @@ console.log('16. the vendored bundle is intact');
     bundle.toString('latin1').slice(-200), 'globalThis["mermaid"]');
 }
 
+console.log('17. trade-off lists on a card');
+{
+  const page = renderPage([{
+    question: 'Which?',
+    options: [
+      { label: 'A', description: 'a {chart: matrix, cost:$12}<!--brief-->\n+ fast\n- untyped' },
+      { label: 'B', description: 'b {cost:$6}<!--brief-->\n- ordinary\n- bullets' },
+    ],
+  }]);
+  has('the marked run reaches the card', page, '<ul class="md-list procon">');
+  has('a pro item', page, '<li class="pro">fast</li>');
+  has('a con item', page, '<li class="con">untyped</li>');
+  has('a dash-only run stays an ordinary list', page, '<ul class="md-list"><li>ordinary</li>');
+
+  // The glyph is what carries the valence: red and green collapse under
+  // deuteranopia, so a rule that only set a color would say nothing to a
+  // reader who cannot separate them.
+  has('the pro glyph is a plus', page, '.procon .pro::before { content:"+";');
+  has('the con glyph is a true minus, not a hyphen', page, 'content:"\\2212"');
+  has('both tokens are defined for light', page, '--pro:#046b34; --con:#b3261e;');
+  has('and for dark', page, '--pro:#3fbf72; --con:#f2837a;');
+  // One grid column for the glyph, so a pro and a con start their text at the
+  // same x whatever the mix.
+  has('the glyph gets its own column', page,
+    '.procon li { display:grid; grid-template-columns:.95rem 1fr;');
+  has('and the browser bullet is off', page, '.procon { list-style:none;');
+}
+
 console.log(fail ? 'FAIL' : 'PASS');
 process.exit(fail);

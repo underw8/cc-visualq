@@ -36,6 +36,12 @@ it only when the labels alone settle the choice.
   choice. Up to ~15 lines.
 - On an option: the consequence of picking that one — what it costs later, what
   it forecloses. Not a longer description. Up to ~6 lines.
+- Trade-offs go in a `+`/`-` list: a run of bullets containing at least one `+`
+  renders as pros and cons, `+` items marked with a green plus and `-` items
+  with a red minus. Two to four lines, pros first. This is the shape to reach
+  for on an option whenever the choice has an upside and a cost that no metric
+  captures — a maturity gap, an ecosystem hole, a lock-in. A run of `-` alone
+  is an ordinary list, so a `+` is required to get the treatment.
 - Cut whatever the reader would guess unaided: the labels, the obvious upside,
   a metric already in the tag.
 - The briefing goes last, after the metric tag.

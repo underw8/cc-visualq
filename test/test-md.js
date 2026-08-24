@@ -25,7 +25,7 @@ console.log('1. block types');
   const ul = renderMd('- a\n- b');
   has('unordered list', ul, '<ul class="md-list">');
   has('two items', ul, '<li>a</li><li>b</li>');
-  has('plus bullets', renderMd('+ a'), '<li>a</li>');
+  has('plus bullets', renderMd('+ a'), '<li class="pro">a</li>');
   has('star bullets', renderMd('* a'), '<li>a</li>');
   has('ordered list', renderMd('1. a\n2. b'), '<ol class="md-list">');
 
@@ -132,6 +132,41 @@ console.log('6. a long dash run returns promptly instead of backtracking');
   renderMd('| h |\n' + '-'.repeat(200_000) + 'x');
   const ms = Date.now() - t0;
   ms < 2000 ? ok(`handled in ${ms}ms`) : bad('long dash run', `took ${ms}ms`);
+}
+
+console.log('7. trade-off lists');
+{
+  const mixed = renderMd('+ fast\n+ small\n- untyped');
+  has('the run is marked', mixed, '<ul class="md-list procon">');
+  has('a plus is a pro', mixed, '<li class="pro">fast</li>');
+  has('a dash beside it is a con', mixed, '<li class="con">untyped</li>');
+  eq('two pros and one con', (mixed.match(/class="pro"/g) || []).length, 2);
+
+  // `-` is the ordinary bullet marker. Styling every one of them as a drawback
+  // would turn every briefing list into a list of drawbacks, so a run with no
+  // plus in it stays an ordinary list.
+  const plain = renderMd('- one\n- two');
+  lacks('a dash-only run is not a trade-off list', plain, 'procon');
+  lacks('and its items carry no valence', plain, 'class="con"');
+
+  has('a plus-only run is all pros', renderMd('+ a\n+ b'), 'class="md-list procon"');
+  eq('with no cons in it', (renderMd('+ a\n+ b').match(/class="con"/g) || []).length, 0);
+
+  // The deciding plus can be the last line of the run, so the whole run is
+  // collected before the call is made.
+  has('a trailing plus still marks the run', renderMd('- a\n+ b'), 'procon');
+  has('and the earlier dash becomes a con', renderMd('- a\n+ b'), '<li class="con">a</li>');
+
+  lacks('an ordered list is never a trade-off list', renderMd('1. a\n2. b'), 'procon');
+
+  // Two runs split by a blank line are two lists; one being a trade-off list
+  // does not make the other one.
+  const two = renderMd('+ a\n- b\n\n- c\n- d');
+  eq('the first run is marked and the second is not',
+    (two.match(/class="md-list procon"/g) || []).length, 1);
+
+  has('item text is still escaped', renderMd('+ <b>x</b>'), '&lt;b&gt;x&lt;/b&gt;');
+  has('inline markup still applies', renderMd('+ **bold**'), '<strong>bold</strong>');
 }
 
 console.log('\n' + (fail ? 'FAILURES' : 'PASS'));

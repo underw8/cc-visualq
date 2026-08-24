@@ -98,6 +98,24 @@ the page and stripped from the terminal dialog:
     |---|---|---|
     | render | 88ms | 710ms |
 
+### Pros and cons
+
+A bullet run containing at least one `+` renders as a trade-off list — `+`
+items with a green plus, `-` items with a red minus — which on an option
+briefing puts the qualitative case beside the numbers:
+
+    Bun
+    Fastest cold start. {chart: matrix, cold:12ms, rss:34mb}
+    <!--brief-->
+    + Bundler and test runner built in
+    - Native addon gaps still bite
+
+A run of `-` alone stays an ordinary bullet list, so ordinary briefing lists are
+unaffected; one `+` anywhere in the run is what asks for the treatment. The
+glyph carries the meaning and the color only reinforces it — red and green
+collapse under deuteranopia, `+` and `−` do not — and both hues are checked
+above 4.5:1 on the card surface in either scheme.
+
 A question briefing opens on the problem — what is being decided, why it comes
 up now, what goes wrong if it goes the wrong way — written for someone who has
 read none of the conversation. Its
@@ -109,9 +127,9 @@ the text before the sentinel, so a question stays one clean line.
 The briefing goes last, after the metric tag. A briefing ending in braces would
 otherwise be read as the tag.
 
-Supported: paragraphs, one level of `-` or `1.` lists, pipe tables with a
-separator row, fenced code, a ```` ```mermaid ```` diagram, `**strong**`,
-`*em*`, `` `code` ``, and headings. Links and images render as literal text —
+Supported: paragraphs, one level of `-` or `1.` lists, `+`/`-` trade-off lists,
+pipe tables with a separator row, fenced code, a ```` ```mermaid ```` diagram,
+`**strong**`, `*em*`, `` `code` ``, and headings. Links and images render as literal text —
 nothing authored becomes a tag, and the page never navigates away while a
 question is waiting.
 
