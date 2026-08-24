@@ -10,21 +10,33 @@ const { renderMd } = require('./md.js');
 const { pageScript, mermaidScript } = require('./page-script.js');
 
 const STYLES = `
-  /* --ok is the accent, not a green: selection means chosen, not successful,
-     and a green tick beside the green --s3 series read as a status light. */
+  /* One declaration per token, light value then dark. prefers-color-scheme
+     cannot be overridden from CSS, so a scheme the reader picks has to come
+     through color-scheme, which light-dark() reads and the toggle sets. The
+     bare hex before each light-dark() is the fallback: an engine without the
+     function drops the second declaration and keeps the light theme rather
+     than losing the token altogether.
+     --ok is the accent, not a green: selection means chosen, not successful,
+     and a green tick beside the green --s3 series read as a status light.
+     --s3 repeats across schemes because that green clears both surfaces. */
   :root { color-scheme: light dark; --ease:cubic-bezier(.2,.7,.3,1);
-          --fast:.12s; --mid:.22s; --fg:#1f1e1c; --mut:#6b6a63; --line:#e5e3d9;
-          --accent:#c96442; --card:#faf9f5; --bg:#f2f0e9; --ok:#c96442;
-          --s0:#2a78d6; --s1:#eda100; --s2:#e87ba4; --s3:#008300;
-          --pro:#046b34; --con:#b3261e; }
-  @media (prefers-color-scheme: dark) {
-    /* --s3 intentionally repeats the light value: that green clears both
-       surfaces, so the repeat is not a leftover. */
-    :root { --fg:#f5f4ef; --mut:#a3a19a; --line:#35352f;
-            --accent:#e08a68; --card:#262624; --bg:#191917; --ok:#e08a68;
-            --s0:#3987e5; --s1:#c98500; --s2:#d55181; --s3:#008300;
-            --pro:#3fbf72; --con:#f2837a; }
-  }
+          --fast:.12s; --mid:.22s;
+          --fg:#1f1e1c; --fg:light-dark(#1f1e1c,#f5f4ef);
+          --mut:#6b6a63; --mut:light-dark(#6b6a63,#a3a19a);
+          --line:#e5e3d9; --line:light-dark(#e5e3d9,#35352f);
+          --accent:#c96442; --accent:light-dark(#c96442,#e08a68);
+          --card:#faf9f5; --card:light-dark(#faf9f5,#262624);
+          --bg:#f2f0e9; --bg:light-dark(#f2f0e9,#191917);
+          --ok:#c96442; --ok:light-dark(#c96442,#e08a68);
+          --s0:#2a78d6; --s0:light-dark(#2a78d6,#3987e5);
+          --s1:#eda100; --s1:light-dark(#eda100,#c98500);
+          --s2:#e87ba4; --s2:light-dark(#e87ba4,#d55181);
+          --s3:#008300;
+          --pro:#046b34; --pro:light-dark(#046b34,#3fbf72);
+          --con:#b3261e; --con:light-dark(#b3261e,#f2837a); }
+  /* The toggle writes one property and every token above follows it. */
+  :root[data-scheme="light"] { color-scheme: light; }
+  :root[data-scheme="dark"] { color-scheme: dark; }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; }
   body { margin:0; padding:2.5rem 1.5rem 7rem; background:var(--bg); color:var(--fg);
@@ -139,6 +151,13 @@ const STYLES = `
         transition:border-color var(--mid), box-shadow var(--mid); }
   .notefield textarea:focus { outline:0; border-color:var(--accent);
         box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+  #scheme { position:fixed; top:1rem; right:1.25rem; z-index:1; width:2rem; height:2rem;
+            display:grid; place-items:center; padding:0; font:inherit; font-size:.9rem;
+            line-height:1; cursor:pointer; border:1px solid var(--line); border-radius:50%;
+            background:var(--card); color:var(--mut);
+            transition:color var(--mid), border-color var(--mid); }
+  #scheme:hover { color:var(--fg); border-color:var(--accent); }
+  #scheme[hidden] { display:none; }
   #cancel { margin-left:auto; font:inherit; padding:.5rem 1rem; border-radius:7px; cursor:pointer;
             border:1px solid var(--line); background:transparent; color:var(--mut);
             transition:color var(--mid), border-color var(--mid), background-color var(--mid); }
@@ -316,6 +335,11 @@ function renderQuestion(q, qi) {
   </section>`;
 }
 
+// Hidden by default: without light-dark() the button would set a property no
+// token reads, so the script unhides it only once support is confirmed.
+const SCHEME = `<button id="scheme" type="button" hidden
+  aria-label="Switch between light and dark"></button>`;
+
 const FOOTER = `<footer><span id="status">Pick an option.</span>
 <button id="jump" type="button" hidden></button>
 <button id="cancel" type="button">Answer in terminal</button>
@@ -328,7 +352,7 @@ function renderPage(questions, { nonce = '', waitMs = 0 } = {}) {
   const mermaid = body.includes('class="mermaid"') ? mermaidScript() : '';
   return `<!doctype html><html><head><meta charset="utf-8">
 <title>Answer the question</title>
-<style>${STYLES}</style></head><body><main>${body}</main>
+<style>${STYLES}</style></head><body>${SCHEME}<main>${body}</main>
 ${FOOTER}${pageScript(nonce, questions.length, waitMs)}${mermaid}
 </body></html>`;
 }

@@ -20,6 +20,38 @@ const pageScript = (nonce, count, waitMs) => `<script>
 
   var expired = false, finished = false, tick = 0;
 
+  // The reader's own scheme choice. prefers-color-scheme cannot be overridden
+  // from CSS, so the pick is written as color-scheme on the root and every
+  // light-dark() token follows it. Nothing persists it: the port changes with
+  // every question, so localStorage is a different origin each time and would
+  // never be read back. The OS remains the default.
+  var root = document.documentElement, scheme = document.getElementById('scheme');
+  if (CSS.supports('color', 'light-dark(#fff,#000)')) {
+    var osDark = window.matchMedia('(prefers-color-scheme: dark)');
+    var current = function () {
+      return root.dataset.scheme || (osDark.matches ? 'dark' : 'light');
+    };
+    var paint = function () {
+      // Names the scheme it switches to, not the one showing.
+      var to = current() === 'dark' ? 'light' : 'dark';
+      scheme.textContent = to === 'dark' ? '\u263d' : '\u2600';
+      scheme.title = 'Switch to ' + to;
+    };
+    scheme.hidden = false;
+    paint();
+    // Following the OS again once the reader has chosen is not worth a third
+    // state on a page that lives four minutes.
+    osDark.addEventListener('change', paint);
+    scheme.addEventListener('click', function () {
+      root.dataset.scheme = current() === 'dark' ? 'light' : 'dark';
+      paint();
+      // Mermaid bakes computed colors into the SVG at render time and rejects
+      // a var(), so a diagram cannot follow the toggle. The hook that
+      // redraws it exists only on a page that loaded the bundle.
+      if (window.__askqRetheme) window.__askqRetheme();
+    });
+  }
+
   function sections() { return document.querySelectorAll('section[data-q]'); }
 
   // A single-select card reports its state as a radio, a multiSelect card as a
@@ -233,30 +265,76 @@ const mermaidScript = () => `<script src="/mermaid.min.js"></script>
 <script>
 (function () {
   if (typeof mermaid === 'undefined') return;
-  var cs = getComputedStyle(document.documentElement);
-  var v = function (n) { return cs.getPropertyValue(n).trim(); };
-  mermaid.initialize({
-    startOnLoad: false, securityLevel: 'strict', htmlLabels: false,
-    theme: 'base', fontFamily: 'ui-sans-serif,-apple-system,system-ui,sans-serif',
-    themeVariables: {
-      background: v('--card'), primaryColor: v('--card'),
-      primaryTextColor: v('--fg'), primaryBorderColor: v('--mut'),
-      secondaryColor: v('--bg'), tertiaryColor: v('--bg'),
-      lineColor: v('--mut'), textColor: v('--fg')
-    }
-  });
+  // Custom properties are substitution-only: getPropertyValue('--fg') hands
+  // back the literal text, which since the tokens became light-dark() means
+  // mermaid would receive "light-dark(#1f1e1c,#f5f4ef)", fail to parse it and
+  // fall back to its own grey. Assigning through a probe forces the resolve:
+  // a computed color is an rgb(), and light-dark() collapses at that point
+  // against whichever color-scheme is in force.
+  var probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.display = 'none';
+  document.body.appendChild(probe);
+  var v = function (n) {
+    probe.style.color = 'var(' + n + ')';
+    return getComputedStyle(probe).color;
+  };
+  // Read fresh each pass: after the toggle these resolve to the other scheme.
+  var config = function () {
+    return {
+      startOnLoad: false, securityLevel: 'strict', htmlLabels: false,
+      theme: 'base', fontFamily: 'ui-sans-serif,-apple-system,system-ui,sans-serif',
+      themeVariables: {
+        background: v('--card'), primaryColor: v('--card'),
+        primaryTextColor: v('--fg'), primaryBorderColor: v('--mut'),
+        secondaryColor: v('--bg'), tertiaryColor: v('--bg'),
+        lineColor: v('--mut'), textColor: v('--fg')
+      }
+    };
+  };
+
+  // run() replaces each block's text with an SVG, so the authored source has to
+  // be kept aside before the first pass or a redraw has nothing to parse.
+  var blocks = [].slice.call(document.querySelectorAll('.mermaid'))
+    .map(function (el) { return { el: el, src: el.textContent }; });
+
   // suppressErrors stops the throw, not the error card mermaid draws in its
   // place — a mistyped diagram would replace itself with a red box. parse()
   // under the same flag returns false and draws nothing, so every block is
   // checked before run() is allowed near it. One that fails keeps its escaped
   // source, and the styling that renders it as code.
-  var blocks = [].slice.call(document.querySelectorAll('.mermaid'));
-  Promise.all(blocks.map(function (el) {
-    return mermaid.parse(el.textContent, { suppressErrors: true })
-      .then(function (parsed) { if (parsed === false) el.setAttribute('data-bad', ''); });
-  })).then(function () {
-    mermaid.run({ querySelector: '.mermaid:not([data-bad])', suppressErrors: true });
-  });
+  //
+  // run() given a config replaces the defaults wholesale rather than merging,
+  // so omitting querySelector leaves mermaid nothing to select and it throws —
+  // and suppressErrors then swallows that, leaving a blank page and no clue.
+  // The two keys are always named together.
+  function draw() {
+    mermaid.initialize(config());
+    return Promise.all(blocks.map(function (b) {
+      return mermaid.parse(b.src, { suppressErrors: true })
+        .then(function (parsed) {
+          if (parsed === false) b.el.setAttribute('data-bad', '');
+        });
+    })).then(function () {
+      return mermaid.run({
+        querySelector: '.mermaid:not([data-bad])', suppressErrors: true
+      });
+    });
+  }
+
+  draw();
+
+  // Mermaid cannot theme off custom properties: it writes computed hex into the
+  // SVG and discards a var() outright, falling back to its own grey. So the
+  // only way a diagram follows the toggle is a redraw from the stashed source.
+  window.__askqRetheme = function () {
+    blocks.forEach(function (b) {
+      b.el.textContent = b.src;
+      b.el.removeAttribute('data-processed');
+      b.el.removeAttribute('data-bad');
+    });
+    draw();
+  };
 })();
 </script>`;
 

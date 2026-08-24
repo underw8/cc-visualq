@@ -204,6 +204,33 @@ left untouched and the launcher declines. And a crash between writing and
 restoring leaves `.vscode/.askq-restore.json` naming what to put back, which the
 next call restores before doing anything else.
 
+**The scheme is a token-level choice, not two blocks.** `prefers-color-scheme`
+cannot be overridden from CSS, so a scheme the reader picks has to arrive
+through `color-scheme` — which is what `light-dark()` reads. Every two-scheme
+token is one declaration, `--fg:light-dark(light,dark)`, preceded by a bare hex
+so an engine without the function keeps the light theme rather than losing the
+token to an invalid value. `--s3` stays single because that green clears both
+surfaces. The toggle writes `data-scheme` on the root and nothing else; it is
+hidden until `CSS.supports` confirms the function, since otherwise it would set
+a property no token reads.
+
+**Mermaid cannot read a custom property, so the toggle redraws it.** A custom
+property is substitution-only: `getPropertyValue('--fg')` returns the literal
+text, which since the tokens became `light-dark()` means mermaid receives
+`light-dark(#1f1e1c,#f5f4ef)`, fails to parse it and falls back to its own
+grey — themed nowhere, in either scheme. Passing `var(--fg)` fails the same
+way and was measured doing so. The values are resolved through a hidden probe
+element instead, because a computed `color` is an rgb() and the function
+collapses at that point. Mermaid then bakes those numbers into the SVG, so a
+diagram cannot follow the toggle on its own: `run()` replaces the block's text
+with an SVG, the authored source is stashed before the first pass, and the
+redraw restores it, clears `data-processed`/`data-bad` and re-runs. The hook is
+only defined on a page that loaded the bundle.
+
+**Nothing persists the reader's scheme.** The port changes with every question,
+so `localStorage` is a different origin each time and would never be read back.
+The OS stays the default and the pick lasts one page.
+
 **Option text is model-generated and reaches the browser.** Everything
 interpolated into HTML goes through `esc()`. Every `innerHTML` write in the
 page script assigns a fixed literal with no interpolation; anything derived
@@ -428,7 +455,10 @@ after changing the decision shape:
    containing `<img src=x onerror=alert(1)>` renders there as literal text.
 10. The countdown is absent until the last minute, then counts down to the
    unchanged `Expired — answer in the terminal.`
-11. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
+11. The scheme toggle flips the whole page, and a briefing diagram flips with
+   it rather than keeping its load-time colors. Check that a second click
+   returns to the first scheme and leaves one SVG per fence, not two.
+12. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
    the page — check it in both light and dark, since the theme is read off the
    custom properties at load and not re-read on a scheme change. A second fence
    with deliberately broken syntax stays on screen as its own source with no

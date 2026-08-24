@@ -343,13 +343,64 @@ console.log('17. trade-off lists on a card');
   // reader who cannot separate them.
   has('the pro glyph is a plus', page, '.procon .pro::before { content:"+";');
   has('the con glyph is a true minus, not a hyphen', page, 'content:"\\2212"');
-  has('both tokens are defined for light', page, '--pro:#046b34; --con:#b3261e;');
-  has('and for dark', page, '--pro:#3fbf72; --con:#f2837a;');
+  has('the pro token names both schemes', page, '--pro:light-dark(#046b34,#3fbf72)');
+  has('and the con token too', page, '--con:light-dark(#b3261e,#f2837a)');
   // One grid column for the glyph, so a pro and a con start their text at the
   // same x whatever the mix.
   has('the glyph gets its own column', page,
     '.procon li { display:grid; grid-template-columns:.95rem 1fr;');
   has('and the browser bullet is off', page, '.procon { list-style:none;');
+}
+
+console.log('18. the scheme toggle');
+{
+  const page = renderPage(Q([{ label: 'A', description: 'x. {c:1}' }]),
+    { nonce: 'ab'.repeat(16), waitMs: 1000 });
+
+  // prefers-color-scheme cannot be overridden from CSS, so the reader's pick
+  // rides on color-scheme and every token reads it through light-dark().
+  has('the button ships in the shell', page, '<button id="scheme"');
+  has('and starts hidden', page, 'hidden');
+  has('an override selector for each direction', page,
+    ':root[data-scheme="light"] { color-scheme: light; }');
+  has('and the other', page, ':root[data-scheme="dark"] { color-scheme: dark; }');
+  // A browser without light-dark() would get a button that sets a property no
+  // token reads, so support is confirmed before it is shown.
+  has('support is feature-detected', page, "CSS.supports('color', 'light-dark(#fff,#000)')");
+  has('the pick is written to the root', page, 'root.dataset.scheme =');
+
+  // Every token carries a bare hex before its light-dark(), so an engine that
+  // drops the function keeps the light theme instead of losing the token.
+  const tokens = ['fg', 'mut', 'line', 'accent', 'card', 'bg', 'ok',
+    's0', 's1', 's2', 'pro', 'con'];
+  const missing = tokens.filter((t) => !page.includes(`--${t}:light-dark(`));
+  eq('every two-scheme token uses light-dark', missing.join(',') || 'none', 'none');
+  const unguarded = tokens.filter((t) => {
+    const at = page.indexOf(`--${t}:light-dark(`);
+    return !page.slice(Math.max(0, at - 40), at).includes(`--${t}:#`);
+  });
+  eq('and each has a bare-hex fallback before it', unguarded.join(',') || 'none', 'none');
+  // --s3 clears both surfaces, so it is one value on purpose, not an omission.
+  lacks('--s3 stays a single value', page, '--s3:light-dark(');
+
+  // Mermaid bakes computed colors into its SVG, so only a page that loaded the
+  // bundle carries the redraw hook.
+  lacks('a page with no diagram gets no redraw hook', page, '__askqRetheme =');
+  const withDiagram = renderPage([{
+    question: 'Q\n<!--brief-->\n```mermaid\nflowchart LR\n  A[x] --> B[y]\n```',
+    options: [{ label: 'A', description: 'a {c:1}' }],
+  }]);
+  has('a diagram page can redraw itself', withDiagram, 'window.__askqRetheme = function');
+  has('and stashes the source before the first pass', withDiagram, 'src: el.textContent');
+  has('the redraw clears the processed flag', withDiagram,
+    "removeAttribute('data-processed')");
+  // A custom property is substitution-only, so getPropertyValue would hand
+  // mermaid the literal light-dark() text and it would fall back to its grey.
+  has('theme values are resolved through a probe', withDiagram, "probe.style.color = 'var('");
+  // run(config) replaces the defaults instead of merging, so the selector and
+  // the flag are still named together on the redraw path.
+  eq('both run keys survive the refactor',
+    (withDiagram.match(/querySelector: '\.mermaid:not\(\[data-bad\]\)', suppressErrors: true/g) || []).length, 1);
 }
 
 console.log(fail ? 'FAIL' : 'PASS');

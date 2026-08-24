@@ -142,6 +142,20 @@ card, so a mistyped fence costs a code block and nothing else.
 
 A question carrying only a briefing and no metrics still opens a page.
 
+## Light and dark
+
+The page follows the OS, and a button at the top right switches it for the one
+page. That button exists because the embedded browser does not always agree with
+its host: VS Code's browser follows Chromium and the OS, not your editor theme,
+so a dark editor on a light OS otherwise renders a light page inside it.
+
+`prefers-color-scheme` cannot be overridden from CSS, so every two-scheme token
+is a `light-dark()` pair and the button writes `color-scheme` on the root. A
+browser without `light-dark()` keeps the light theme and the button stays
+hidden. A briefing diagram is redrawn on switch, since mermaid bakes colors into
+its SVG and cannot read a custom property. Nothing is persisted: the port
+changes with every question, so there is no origin to remember it against.
+
 ## Browser selection
 
 The launcher tries each target and takes the first that reports success, rather
