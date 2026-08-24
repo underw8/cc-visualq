@@ -108,8 +108,8 @@ eq('raw still displayable', txt[0].raw, 'bananas');
 
 console.log('9. the reserved chart key');
 {
-  const p = parseMetrics('Fast. {chart: radar, cost:$12, latency:40ms}');
-  eq('chart extracted', p.chart, 'radar');
+  const p = parseMetrics('Fast. {chart: matrix, cost:$12, latency:40ms}');
+  eq('chart extracted', p.chart, 'matrix');
   eq('chart absent from metrics', p.metrics.some((m) => m.key === 'chart'), false);
   eq('sibling metrics survive', p.metrics.length, 2);
   eq('description still cleaned', p.clean, 'Fast.');
@@ -125,6 +125,19 @@ console.log('9. the reserved chart key');
   eq('unrecognized value passes through untouched', junk.chart, 'sunburst');
 
   eq('no tag at all still yields a chart field', parseMetrics('Just text.').chart, '');
+}
+
+console.log('a rate period does not cost the bar');
+{
+  // `$12/mo` is the first example in hooks/askq-rule.md, so an option authored
+  // straight from the rule must rank rather than fall through to text.
+  const rate = parseValue('$12/mo');
+  eq('a rate parses as a number', rate.kind, 'number');
+  eq('the period is dropped, the magnitude kept', rate.value, 12);
+  eq('a unit before the period still scales', parseValue('2.5k/mo').value, 2500);
+  eq('so does a size', parseValue('120kb/s').value, 122880);
+  eq('a bare slash is still text', parseValue('a/b').kind, 'text');
+  eq('a dangling slash is still text', parseValue('12/').kind, 'text');
 }
 
 console.log('10. briefings');

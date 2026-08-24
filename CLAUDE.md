@@ -10,7 +10,7 @@ as an HTML comparison chart in the terminal's embedded browser.
 ## Commands
 
 ```sh
-make test            # all eight suites (./test/run-all.sh)
+make test            # all nine suites (./test/run-all.sh)
 make validate        # claude plugin validate .
 make check           # test + validate
 ```
@@ -71,8 +71,8 @@ hooks/askq-rule.md               option-authoring rule, injected at session star
 hooks/askq.js              loopback server, blocks, answers the tool
 hooks/lib/render.js              the page: styles, cards, assembly
 hooks/lib/page-script.js         the browser script the page runs
-hooks/lib/charts.js              the five chart forms and form selection
-hooks/lib/esc.js                 HTML/SVG escaping, shared by render and charts
+hooks/lib/charts.js              the three chart forms and form selection
+hooks/lib/esc.js                 HTML escaping, shared by render and charts
 hooks/lib/md.js                  the briefing markdown subset
 hooks/lib/launch.js              browser launcher selection and spawn
 hooks/lib/vscode.js              VS Code browser launcher, stub + settings
@@ -80,7 +80,8 @@ hooks/lib/metrics.js             tag parsing and stripping, units, bar widths
 scripts/dev-hooks.js             dev-install registration, merged not written
 vendor/mermaid.min.js            pinned diagram library, served by the hook
 vendor/README.md                 version, hash, and what to re-check on a bump
-test/run-all.sh                  runs all eight suites
+test/run-all.sh                  runs all nine suites
+test/test-load.js                every lib module parses; runs first
 test/test-md.js                  the subset and its escaping
 ```
 
@@ -204,6 +205,44 @@ left untouched and the launcher declines. And a crash between writing and
 restoring leaves `.vscode/.askq-restore.json` naming what to put back, which the
 next call restores before doing anything else.
 
+**A backtick anywhere inside `STYLES` or `pageScript`/`mermaidScript` breaks
+the module.** Both are template literals, so a backtick in a *comment* inside
+one closes the string and the file stops parsing. The failure surfaces three
+suites away as `test-askq` reporting `expected "allow" got undefined`, because
+the hook crashed before writing a decision. `test/test-load.js` requires every `lib/`
+module for exactly this reason and runs first, so the broken file and line are
+the first thing reported. It imports nothing at the top: a suite that requires
+the thing it checks dies before it can report on it, which is why the guard is
+its own suite rather than a section of `test-render.js`. Write `color-scheme`, not the backticked form, in any comment
+that lives inside those literals.
+
+**The scheme is a token-level choice, not two blocks.** `prefers-color-scheme`
+cannot be overridden from CSS, so a scheme the reader picks has to arrive
+through `color-scheme` — which is what `light-dark()` reads. Every two-scheme
+token is one declaration, `--fg:light-dark(light,dark)`, preceded by a bare hex
+so an engine without the function keeps the light theme rather than losing the
+token to an invalid value. `--s3` stays single because that green clears both
+surfaces. The toggle writes `data-scheme` on the root and nothing else; it is
+hidden until `CSS.supports` confirms the function, since otherwise it would set
+a property no token reads.
+
+**Mermaid cannot read a custom property, so the toggle redraws it.** A custom
+property is substitution-only: `getPropertyValue('--fg')` returns the literal
+text, which since the tokens became `light-dark()` means mermaid receives
+`light-dark(#1f1e1c,#f5f4ef)`, fails to parse it and falls back to its own
+grey — themed nowhere, in either scheme. Passing `var(--fg)` fails the same
+way and was measured doing so. The values are resolved through a hidden probe
+element instead, because a computed `color` is an rgb() and the function
+collapses at that point. Mermaid then bakes those numbers into the SVG, so a
+diagram cannot follow the toggle on its own: `run()` replaces the block's text
+with an SVG, the authored source is stashed before the first pass, and the
+redraw restores it, clears `data-processed`/`data-bad` and re-runs. The hook is
+only defined on a page that loaded the bundle.
+
+**Nothing persists the reader's scheme.** The port changes with every question,
+so `localStorage` is a different origin each time and would never be read back.
+The OS stays the default and the pick lasts one page.
+
 **Option text is model-generated and reaches the browser.** Everything
 interpolated into HTML goes through `esc()`. Every `innerHTML` write in the
 page script assigns a fixed literal with no interpolation; anything derived
@@ -213,8 +252,19 @@ the question heading the footer's jump link names, alike.
 **`chart` is a reserved key in the metric tag.** It names the comparison form,
 is stripped before rendering, and an option whose genuine metric is called
 `chart` loses it. The first option declaring it wins; later declarations are
-ignored. A form whose data can't carry it degrades silently — radar to matrix,
-scatter to grouped, grouped and matrix to bars.
+ignored. A form whose data can't carry it degrades silently — `grouped` and
+`matrix` to `bars`. A retired name (`radar`, `scatter`) is an unknown name and
+lands on `bars` too, so an option authored against an older rule still renders.
+
+**No axis-per-key form, and the reasoning is the reason.** Radar and scatter
+were built and removed. A vertex at the centre and a missing vertex look
+identical, so both refused any key an option lacked and any spread over 10:1 —
+which meant the honest cases were the ones they declined. `AskUserQuestion`
+caps a question at four options and the rule caps keys at four, so the largest
+possible dataset is sixteen numbers, and `matrix` states all sixteen. Adding one
+back means re-adding the `completeNumeric` gate, the readability gate, finite
+clamping on every SVG coordinate, and a manual check for label collisions that
+never show up in the markup.
 
 **An ambiguous unit takes its dimension from its siblings.** `m` is minutes in
 a duration and millions in a count; `b` is bytes or billions. `resolveDimensions`
@@ -223,6 +273,12 @@ scans every option's value under one key to decide, so `{stars:2m}` beside
 Without that scan `2m` falls to whichever table matches first — minutes — and
 draws a bar 240x too long beside `500k`. Two firm dimensions under one key
 (`4mb` and `2s`) clear the dimension instead, so the raw numbers rank.
+
+**A value may carry a trailing `/period`.** `$12/mo` is the rule's own first
+example, and the unit charset excluded `/`, so it parsed as text and drew no
+bar — the drift this section warns about, in the rule's headline case. The
+period is dropped and the magnitude ranks; a key mixing a rate with a one-off
+is already outside one-dimension-per-key.
 
 **`hooks/askq-rule.md` is the contract for what the tables accept.** The rule
 tells Claude which units and ordinal words to write, `UNITS` and `ORDINALS` in
@@ -237,63 +293,27 @@ is 4 for that reason, and its modulo is a backstop rather than a real cycle. A
 tool cannot produce.
 
 **Series colors flow through one `--c` custom property.** `.s0`–`.s3` assign it;
-every colored mark (`.track i`, `.fill`, `circle`, `.poly`, `.lg i`) reads
-`var(--c)`. A new mark costs one rule, not one per option slot. `.track i` falls
+every colored mark (`.track i`, `.fill`) reads `var(--c)`. A new mark costs one
+rule, not one per option slot. `.track i` falls
 back to `var(--accent)` because the `bars` form emits no series class.
 
-**Radar and scatter plot magnitude, not goodness.** Whether a large `cost`
-should reach outward is unknowable without the model declaring polarity, so
-axes use the same normalization the bars use.
-
-**An axis-per-key form also refuses an unreadable spread.** `MIN_AXIS_PCT` is
-10: below that a mark sits where an absent value sits, and the reader cannot
-tell a small number from a gap. `barPercent` already floors at 2%, which is why
-the floor cannot be the answer — it makes the mark visible without making it
-distinguishable. Rescaling is the other non-answer: a log axis would render the
-50x gap as a short step and the chart would understate it. So `radar` and
-`scatter` hand off to `matrix`/`grouped`, where every value is printed. The gate
-needs the scale, so `pickForm` takes it as a third argument and opens the gate
-when it is absent — a caller that forgets it degrades to the old behaviour
-rather than losing every chart.
-
-**An axis-per-key form draws only keys every option carries.** Both read
-`shape.completeNumeric`, never `numericKeys`. A vertex at the centre or a
-dropped point stands for "no data" but reads as "the lowest value here", and
-the reader has no way to tell which — so the form degrades instead (radar to
-matrix, scatter to grouped) and the table shows the gap as an em dash. `bars`
-omits the row, `grouped` and `matrix` print the dash; radar and scatter are
-the two that cannot say it, which is why they refuse the axis.
-
-**The radar's radius is set by `max-height`, not by the viewBox.** At `width:100%`
-the scale is `min(containerWidth/640, cap/360)` and the cap always wins, so the
-cap is the radius. Narrowing the viewBox to a square gains nothing — it only
-trims the letterbox — and costs the horizontal room a long key name needs.
-
-**Three things keep twenty labels apart on a four-by-four radar.** The key name
-sits at `1.22r`, clear of a value label that reaches just past `r`; it is
-anchored outward (`start` right of centre, `end` left, `middle` only where the
-axis is near-vertical) so it grows away from that value rather than back into
-it; and each series is offset along the axis normal. Four options across four
-axes is the most `AskUserQuestion` can produce, and it is the case to measure
-after touching any of the three — collisions do not show up in the markup.
-
-**Both direct-label their marks, and the labels wear text ink.** Two of the
-four light-mode series sit under 3:1 on the page surface, so hue alone cannot
-carry identity: scatter labels each point, radar labels every vertex. Same-axis
-vertices are collinear, so radar offsets each series along the axis normal —
-that fixed 12px separation is what keeps four labels apart when the values
-nearly coincide. A label in `--fg`; never in the series color.
+**`--accent` is ink at one site and fill at another, so the fill has its own
+ink.** Light enough to read as text on a card is too light for white text on top
+of it: `#fff` over the dark accent measures 2.62:1, under the 4.5:1 floor the
+Send button's label needs. `--on-accent` is that ink and `#send` and
+`.tick::after` are the two sites that read it; a third filled accent site must
+read it too. It is one value rather than a `light-dark()` pair because the
+accent is mid-tone in both schemes (5.05:1 light, 7.50:1 dark) — an accent that
+flipped lightness between schemes would need the pair.
 
 **The series palette is validated, not chosen.** Under the all-pairs rule the
-comparison forms need (radar and scatter compare every pair, not just
-neighbours), only two four-hue sets clear colorblind and normal-vision
+comparison forms need — `grouped` puts four bars in one block and `matrix` four
+rows in one table, so any pair may be compared — only two four-hue sets clear
+colorblind and normal-vision
 separation on the dark surface — the shipped one is one of them. Editing a
 `--s0`–`--s3` hex by eye reintroduces a pair no reader can separate. Re-run the
 bundled `dataviz` skill's `validate_palette.js` against both surfaces with
 `--pairs all` instead.
-
-**Every number reaching an SVG attribute is clamped finite.** `NaN` in a path
-blanks the shape silently instead of erroring, which reads as a data bug.
 
 **Motion is CSS, in one block, on three tokens.** `--ease`, `--fast` and
 `--mid` are the whole vocabulary: a new hover or transition reuses them rather
@@ -329,6 +349,20 @@ a sandboxed iframe renders it inertly but cannot report its height, forcing
 fixed-height cards, and a tag allowlist means owning a sanitizer and its
 bypasses against text a prompt injection can reach.
 
+**A `-` list is an ordinary list; one `+` in the run makes it a trade-off
+list.** `-` is the normal bullet marker, so styling every `-` item as a
+drawback would turn every briefing list into a list of drawbacks. `readList`
+collects the whole run before deciding, because the deciding `+` can be its
+last line. Ordered lists never qualify: `1.` carries sequence, not valence.
+
+**The pro/con glyph carries the valence and the color only reinforces it.**
+Red and green collapse under deuteranopia, `+` and `−` do not, so the rule that
+matters is `content`, not `color`. `--pro`/`--con` are checked above 4.5:1 on
+`--card` in both schemes and the item text keeps its inherited ink, so a card of
+cons is no harder to read than a card of pros. The con glyph is U+2212, not a
+hyphen: it matches the plus in width, which is what keeps a mixed run's text on
+one left edge.
+
 **`md.js` escapes before it substitutes.** `esc()` runs on the raw line and the
 inline patterns run on the escaped string, so a model-written `<b>` arrives as
 `&lt;b&gt;` and cannot be revived. Reversed, an authored tag passes through
@@ -337,8 +371,8 @@ scheme validation against `javascript:`, and a page that can navigate away
 while `askq.js` waits is worse than a briefing without hyperlinks.
 
 **The authoring rule is a four-place contract.** `hooks/askq-rule.md`,
-`UNITS`/`ORDINALS` in `lib/metrics.js`, the subset in `lib/md.js`, and README's
-tables must agree. A block type in `md.js` and not the rule is never authored;
+`UNITS`/`ORDINALS` in `lib/metrics.js`, the subset in `lib/md.js` (including
+the `+`/`-` trade-off run), and README's tables must agree. A block type in `md.js` and not the rule is never authored;
 one in the rule and not `md.js` renders as literal text. Neither errors.
 
 **Mermaid reads `textContent`, which is why the escape stays.** A ```` ```mermaid ````
@@ -410,10 +444,9 @@ there is nothing to drive. No suite covers what Claude Code does with the hook's
 output; that needs a question asked in a real interactive session. Check by hand
 after changing the decision shape:
 
-1. Each form renders as named: `{chart: grouped|matrix|scatter|radar}` with
-   enough dimensions, and one deliberately under-dimensioned case to see the
-   documented degradation. Also one `radar` whose options span 50x on a key
-   (`{size:3.4mb}` against `{size:170mb}`), which must arrive as a matrix.
+1. Each form renders as named: `{chart: grouped|matrix}` with enough
+   dimensions, and one option carrying no value for a shared key, which must
+   print an em dash. A retired name (`{chart: radar}`) must arrive as bars.
 2. Options with no tag: no page, dialog unchanged.
 3. With `askq.js` wired in, clicking a card answers the tool; typing in
    "Something else" answers with that text verbatim; notes arrive alongside
@@ -424,7 +457,9 @@ after changing the decision shape:
    pressed.
 5. Break the hook (`exit 1` at the top). The dialog still answers normally.
 6. A question briefing renders above the chart and an option briefing inside
-   its card, below the bars. A question carrying a briefing and no metric tag
+   its card, below the bars. An option briefing carrying a `+`/`-` run draws
+   the plus and minus glyphs in both schemes, and a `-`-only run beside it
+   still draws ordinary bullets. A question carrying a briefing and no metric tag
    still opens a page. A question with neither is unchanged. With
    `askq.js` wired in, click a card whose briefing contains a table and
    a fenced block: the answer arrives keyed to the stripped question, and the
@@ -441,9 +476,9 @@ after changing the decision shape:
    containing `<img src=x onerror=alert(1)>` renders there as literal text.
 10. The countdown is absent until the last minute, then counts down to the
    unchanged `Expired — answer in the terminal.`
-11. A four-option radar over four axes — twenty labels, the most the tool can
-   produce. No two overlap and none is clipped; check with long key names, since
-   a collision never shows up in the markup.
+11. The scheme toggle flips the whole page, and a briefing diagram flips with
+   it rather than keeping its load-time colors. Check that a second click
+   returns to the first scheme and leaves one SVG per fence, not two.
 12. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
    the page — check it in both light and dark, since the theme is read off the
    custom properties at load and not re-read on a scheme change. A second fence

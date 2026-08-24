@@ -2,8 +2,9 @@
 
 // The comparison forms. A form is requested by the model through the reserved
 // `chart` key and honoured only when the question's data can carry it;
-// otherwise it degrades along the chain below. Drawing a broken axis reads as
-// a bug in the data rather than in the request, so degradation is silent.
+// otherwise it degrades along the chain below. Drawing a chart the data cannot
+// fill reads as a bug in the data rather than in the request, so degradation
+// is silent.
 
 const { esc } = require('./esc.js');
 const { barPercent } = require('./metrics.js');
@@ -15,60 +16,32 @@ const seriesClass = (i) => `s${i % SERIES}`;
 
 // Each entry is registered whole: `fits`, its `fallback`, and its `render`
 // (absent for `bars`, which draws inside the option cards instead of a
-// chart block). One object per form, so a sixth form is one literal, not a
+// chart block). One object per form, so a fourth form is one literal, not a
 // second map kept in sync by hand.
+//
+// Every form here prints each value as text beside its bar, so a key an option
+// has no value for shows as an em dash rather than as a mark at zero. That is
+// what an axis-per-key form could not say, and why none is offered.
 const FORMS = {
   bars:    { fits: () => true },
   grouped: { fits: (s) => s.metrics >= 1, fallback: 'bars', render: grouped },
   matrix:  { fits: (s) => s.metrics >= 1, fallback: 'bars', render: matrix },
-  // Scatter plots two fixed axes; an option missing either one would draw as
-  // a dropped point (and, since non-bars forms hide the card metric rows,
-  // its value would appear nowhere). Requiring both axes on every option
-  // turns that into an ordinary degradation instead of losing data silently.
-  // Radar shares scatter's requirement for the same reason: an axis an option
-  // has no value for would plot at the centre, which reads as a genuine
-  // minimum rather than a gap. Degrading to matrix shows the gap as an em dash.
-  scatter: { fits: (s) => s.completeNumeric.length >= 2 && s.axesReadable, fallback: 'grouped', render: scatter },
-  radar:   { fits: (s) => s.completeNumeric.length >= 3 && s.axesReadable, fallback: 'matrix', render: radar },
 };
 
-// A mark below this share of its axis sits where an absent value sits, so the
-// axis stops separating "small" from "missing". Compressing the scale to fit
-// both would understate the gap, so the form degrades to a table instead.
-const MIN_AXIS_PCT = 10;
-
-// Metric keys in declaration order, and which of them can hold an axis.
-// Ordinals have a finite rank, so they count as numeric.
-function shapeOf(options, scale) {
+// Metric keys in declaration order.
+function shapeOf(options) {
   const keys = [];
-  const numericKeys = [];
   for (const o of options) {
-    for (const m of o.metrics) {
-      if (!keys.includes(m.key)) keys.push(m.key);
-      if (Number.isFinite(m.value) && !numericKeys.includes(m.key)) numericKeys.push(m.key);
-    }
+    for (const m of o.metrics) if (!keys.includes(m.key)) keys.push(m.key);
   }
-  // Numeric keys *every* option carries. An axis-per-key form has no honest
-  // way to draw an option that lacks one, so this is the only key set they use.
-  const completeNumeric = numericKeys.filter((k) =>
-    options.every((o) => o.metrics.some((m) => m.key === k && Number.isFinite(m.value))));
-  return {
-    keys,
-    completeNumeric,
-    metrics: keys.length,
-    // Without a scale nothing is measurable, so the gate opens.
-    axesReadable: !scale || completeNumeric.every((k) => options.every((o) => {
-      const m = valueOf(o, k);
-      return !m || barPercent(m, scale) >= MIN_AXIS_PCT;
-    })),
-  };
+  return { keys, metrics: keys.length };
 }
 
-function pickForm(requested, options, scale) {
-  const shape = shapeOf(options, scale);
+function pickForm(requested, options) {
+  const shape = shapeOf(options);
   const req = String(requested || '').toLowerCase();
   let name = Object.hasOwn(FORMS, req) ? req : 'bars';
-  // Chains are two deep and end at `bars`; the bound only guards a
+  // Chains are one deep and end at `bars`; the bound only guards a
   // hand-edited FORMS, since no real chain loops.
   for (let i = 0; i < 3 && !FORMS[name].fits(shape); i++) {
     name = FORMS[name].fallback || 'bars';
@@ -115,157 +88,10 @@ function matrix(options, scale, shape) {
     <thead><tr><td></td>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-// Chart canvas, in user units. The page scales it with viewBox.
-const W = 640, H = 360, PAD = 48;
-
-// A non-finite number in an SVG attribute blanks the shape silently rather
-// than erroring, so every coordinate is clamped before it reaches the string.
-// NaN (and anything that doesn't parse to a number) has no direction to
-// clamp toward, so it floors; ±Infinity clamps through Math.min/max like any
-// other out-of-range value, landing on hi or lo respectively.
-function num(n, lo, hi) {
-  const v = Number(n);
-  if (Number.isNaN(v)) return lo;
-  return Math.min(hi, Math.max(lo, Math.round(v * 100) / 100));
-}
-
-// The value that tops out this key's axis, as authored: `3.5mb`, not the
-// 3670016 it normalizes to. Every metric under one key shares a dimension, so
-// the largest magnitude is the largest bar and no scale is needed to rank them.
-function peakRaw(options, key) {
-  let best = null;
-  for (const o of options) {
-    const m = valueOf(o, key);
-    if (m && (!best || Math.abs(m.value) > Math.abs(best.value))) best = m;
-  }
-  return best ? best.raw : '';
-}
-
-// Axes plot magnitude, not goodness: whether a large cost should sit far right
-// is unknowable unless the model declares polarity.
-function scatter(options, scale, shape) {
-  const [kx, ky] = shape.completeNumeric;
-  const points = options
-    .map((o, i) => {
-      const mx = valueOf(o, kx);
-      const my = valueOf(o, ky);
-      if (!mx || !my) return '';
-      const x = num(PAD + (barPercent(mx, scale) / 100) * (W - PAD * 2), PAD, W - PAD);
-      const y = num(H - PAD - (barPercent(my, scale) / 100) * (H - PAD * 2), PAD, H - PAD);
-      return `<circle class="${seriesClass(i)}" cx="${x}" cy="${y}" r="6"/>
-        <text class="plabel" x="${num(x + 10, PAD, W)}" y="${num(y - 8, 12, H)}">${esc(o.label)}</text>`;
-    })
-    .join('');
-
-  // Drawn before the marks so data sits on top of the grid, never under it.
-  const grid = [0.25, 0.5, 0.75]
-    .map((f) => {
-      const x = num(PAD + f * (W - PAD * 2), PAD, W - PAD);
-      const y = num(H - PAD - f * (H - PAD * 2), PAD, H - PAD);
-      return `<line class="gridline" x1="${x}" y1="${PAD}" x2="${x}" y2="${H - PAD}"/>
-        <line class="gridline" x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}"/>`;
-    })
-    .join('');
-
-  // One tick per axis, at the end. Both axes are normalized to their own key's
-  // largest value, so naming that value is the whole of the scale: every other
-  // position on the axis is a fraction of the number printed here.
-  const tx = esc(peakRaw(options, kx));
-  const ty = esc(peakRaw(options, ky));
-
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="${esc(kx)} plotted against ${esc(ky)}">
-    ${grid}
-    <line class="axis" x1="${PAD}" y1="${H - PAD}" x2="${W - PAD}" y2="${H - PAD}"/>
-    <line class="axis" x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H - PAD}"/>
-    <text class="atick" x="${W - PAD}" y="${H - PAD + 16}" text-anchor="end">${tx}</text>
-    <text class="atick" x="${PAD - 6}" y="${PAD + 4}" text-anchor="end">${ty}</text>
-    <text class="alabel" x="${W / 2}" y="${H - 12}" text-anchor="middle">${esc(kx)}</text>
-    <text class="alabel" x="14" y="${H / 2}" text-anchor="middle"
-          transform="rotate(-90 14 ${H / 2})">${esc(ky)}</text>
-    ${points}</svg></div>`;
-}
-
-// Radar plots magnitude, not goodness — the same normalization the bars use.
-// Every axis is one every option carries, so no vertex stands for absent data.
-function radar(options, scale, shape) {
-  const keys = shape.completeNumeric;
-  const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - PAD;
-  const angleAt = (i) => (Math.PI * 2 * i) / keys.length - Math.PI / 2;
-  const at = (i, frac) => {
-    const a = angleAt(i);
-    return {
-      x: num(cx + Math.cos(a) * r * frac, 0, W),
-      y: num(cy + Math.sin(a) * r * frac, 0, H),
-    };
-  };
-
-  // Unlabelled on purpose: per-key normalization means one radius stands for a
-  // different quantity on each spoke. The vertices carry the values.
-  const rings = [0.25, 0.5, 0.75, 1]
-    .map((f) => `<polygon class="gridline" points="${
-      keys.map((k, i) => { const p = at(i, f); return `${p.x},${p.y}`; }).join(' ')}"/>`)
-    .join('');
-
-  const axes = keys
-    .map((k, i) => {
-      const end = at(i, 1);
-      // Clear of a value label sitting just past r, and anchored outward so the
-      // name grows away from it rather than back into it.
-      const label = at(i, 1.22);
-      const cos = Math.cos(angleAt(i));
-      const anchor = Math.abs(cos) < 0.25 ? 'middle' : (cos > 0 ? 'start' : 'end');
-      return `<line class="axis" x1="${cx}" y1="${cy}" x2="${end.x}" y2="${end.y}"/>
-        <text class="alabel" x="${label.x}" y="${label.y}" text-anchor="${anchor}">${esc(k)}</text>`;
-    })
-    .join('');
-
-  const polys = options
-    .map((o, i) => {
-      const pts = keys
-        .map((k, ki) => {
-          const m = valueOf(o, k);
-          const p = at(ki, m ? barPercent(m, scale) / 100 : 0);
-          return `${p.x},${p.y}`;
-        })
-        .join(' ');
-      return `<polygon class="poly ${seriesClass(i)}" points="${pts}"/>`;
-    })
-    .join('');
-
-  // Every vertex carries its own value, so a series stays readable where its
-  // hue does not reach 3:1 against the surface. Vertices on one axis are
-  // collinear, so labels would stack whenever two options are close; each
-  // series is nudged one line height along the axis's perpendicular, which
-  // holds four of them apart whatever the radii.
-  const step = (i) => (i - (options.length - 1) / 2) * 12;
-  const values = options
-    .map((o, i) => keys
-      .map((k, ki) => {
-        const m = valueOf(o, k);
-        if (!m) return '';
-        const p = at(ki, barPercent(m, scale) / 100);
-        const a = angleAt(ki), d = step(i);
-        const x = num(p.x - Math.sin(a) * d + Math.cos(a) * 5, 4, W - 4);
-        const y = num(p.y + Math.cos(a) * d + Math.sin(a) * 5 + 3.5, 10, H - 4);
-        return `<text class="vlabel" x="${x}" y="${y}" text-anchor="middle">${esc(m.raw)}</text>`;
-      })
-      .join(''))
-    .join('');
-
-  const legend = options
-    .map((o, i) => `<span class="lg"><i class="${seriesClass(i)}"></i>${esc(o.label)}</span>`)
-    .join('');
-
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="option profiles across ${keys.length} dimensions">${rings}${axes}${polys}${values}</svg>
-    <div class="legend">${legend}</div></div>`;
-}
-
 // '' for any form with no chart block of its own (`bars` draws inside cards).
 function renderChart(name, options, scale, shape) {
   const render = FORMS[name]?.render;
   return render ? render(options, scale, shape) : '';
 }
 
-module.exports = { shapeOf, pickForm, renderChart, num };
+module.exports = { shapeOf, pickForm, renderChart };

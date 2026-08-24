@@ -13,6 +13,7 @@
 const { esc } = require('./esc.js');
 
 const BULLET = /^\s*([-*+]|\d+\.)\s+/;
+const PLUS = /^\s*\+\s+/;
 const FENCE = /^\s*```/;
 const HEADING = /^(#{1,4})\s+(.*)$/;
 
@@ -82,15 +83,26 @@ function readHeading(lines, i) {
   return h ? { html: `<h4>${inline(h[2])}</h4>`, next: i + 1 } : null;
 }
 
+// `-` is the ordinary bullet, so a run of them stays an ordinary list — styling
+// every `-` as a drawback would turn every briefing list into a list of
+// drawbacks. One `+` anywhere in the run is what declares it a trade-off list,
+// and only then does each `-` beside it read as a con. The whole run is
+// collected before that call, since the last line can be what decides it.
 function readList(lines, i) {
   if (!BULLET.test(lines[i])) return null;
   const tag = /^\s*\d/.test(lines[i]) ? 'ol' : 'ul';
-  const items = [];
+  const run = [];
   let j = i;
-  for (; j < lines.length && BULLET.test(lines[j]); j++) {
-    items.push(`<li>${inline(lines[j].replace(BULLET, ''))}</li>`);
-  }
-  return { html: `<${tag} class="md-list">${items.join('')}</${tag}>`, next: j };
+  for (; j < lines.length && BULLET.test(lines[j]); j++) run.push(lines[j]);
+  const procon = tag === 'ul' && run.some((l) => PLUS.test(l));
+  const items = run.map((l) => {
+    const cls = procon ? (PLUS.test(l) ? ' class="pro"' : ' class="con"') : '';
+    return `<li${cls}>${inline(l.replace(BULLET, ''))}</li>`;
+  });
+  return {
+    html: `<${tag} class="md-list${procon ? ' procon' : ''}">${items.join('')}</${tag}>`,
+    next: j,
+  };
 }
 
 // Last, and the only reader that always matches: anything no other reader

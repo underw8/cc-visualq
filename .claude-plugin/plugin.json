@@ -1,6 +1,6 @@
 {
   "name": "cc-visualq",
-  "description": "Renders AskUserQuestion options as an HTML comparison chart (bars, grouped, matrix, scatter, or radar) in your terminal's embedded browser. Click a card to answer.",
+  "description": "Renders AskUserQuestion options as an HTML comparison chart (bars, grouped, or matrix) in your terminal's embedded browser. Click a card to answer.",
   "version": "0.3.1",
   "author": {
     "name": "underw8"

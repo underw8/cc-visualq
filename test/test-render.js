@@ -72,60 +72,32 @@ const scaleOf = (options) => scalesFor(options.map((o) => o.metrics));
 console.log('5. form selection and degradation');
 {
   const three = prep([
-    { label: 'A', description: 'a {chart: radar, cost:$12, lat:40ms, risk:low}' },
+    { label: 'A', description: 'a {chart: matrix, cost:$12, lat:40ms, risk:low}' },
     { label: 'B', description: 'b {cost:$6, lat:180ms, risk:high}' },
   ]);
-  eq('radar honoured with 3 numeric axes', pickForm('radar', three).name, 'radar');
-
-  const two = prep([
-    { label: 'A', description: 'a {cost:$12, lat:40ms}' },
-    { label: 'B', description: 'b {cost:$6, lat:180ms}' },
-  ]);
-  eq('radar degrades to matrix below 3 axes', pickForm('radar', two).name, 'matrix');
-  eq('scatter honoured with 2 numeric', pickForm('scatter', two).name, 'scatter');
+  eq('matrix honoured with metrics', pickForm('matrix', three).name, 'matrix');
+  eq('grouped honoured with metrics', pickForm('grouped', three).name, 'grouped');
 
   const one = prep([
     { label: 'A', description: 'a {cost:$12}' },
     { label: 'B', description: 'b {cost:$6}' },
   ]);
-  eq('scatter degrades to grouped with 1 metric', pickForm('scatter', one).name, 'grouped');
   eq('grouped honoured with 1 metric', pickForm('grouped', one).name, 'grouped');
+  eq('matrix honoured with 1 metric', pickForm('matrix', one).name, 'matrix');
 
   const bare = prep([{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }]);
   eq('grouped degrades to bars with no metrics', pickForm('grouped', bare).name, 'bars');
   eq('matrix degrades to bars with no metrics', pickForm('matrix', bare).name, 'bars');
-  eq('scatter degrades all the way to bars', pickForm('scatter', bare).name, 'bars');
-  eq('radar degrades all the way to bars', pickForm('radar', bare).name, 'bars');
 
   eq('unknown form falls back to bars', pickForm('sunburst', three).name, 'bars');
+  // A form this plugin used to draw is now just an unknown name, and an option
+  // authored against an older rule must still render rather than throw.
+  eq('a retired form falls back to bars', pickForm('radar', three).name, 'bars');
   eq('empty request falls back to bars', pickForm('', three).name, 'bars');
-  eq('requested form is case-insensitive', pickForm('Radar', three).name, 'radar');
+  eq('requested form is case-insensitive', pickForm('Matrix', three).name, 'matrix');
 
   eq('shape counts distinct keys', shapeOf(three).metrics, 3);
-  eq('shape counts axis-capable keys', shapeOf(three).completeNumeric.length, 3);
-
-  // An axis-per-key form is gated on the shortest bar it would draw: a vertex
-  // at 2% of the radius sits where a missing value sits. The gate needs the
-  // scale, and opens without one so a caller that omits it degrades to the
-  // old behaviour rather than losing every chart.
-  const wide = prep([
-    { label: 'A', description: 'a {size:3.4mb, setup:2h, risk:low}' },
-    { label: 'B', description: 'b {size:170mb, setup:4h, risk:critical}' },
-  ]);
-  eq('radar refuses a 50x spread', pickForm('radar', wide, scaleOf(wide)).name, 'matrix');
-  eq('radar keeps it without a scale', pickForm('radar', wide).name, 'radar');
-
-  const near = prep([
-    { label: 'A', description: 'a {size:60mb, setup:2h, risk:low}' },
-    { label: 'B', description: 'b {size:170mb, setup:4h, risk:critical}' },
-  ]);
-  eq('radar keeps a 3x spread', pickForm('radar', near, scaleOf(near)).name, 'radar');
-
-  const wide2 = prep([
-    { label: 'A', description: 'a {size:3.4mb, setup:2h}' },
-    { label: 'B', description: 'b {size:170mb, setup:4h}' },
-  ]);
-  eq('scatter refuses it too', pickForm('scatter', wide2, scaleOf(wide2)).name, 'grouped');
+  eq('shape keeps declaration order', shapeOf(three).keys.join(','), 'cost,lat,risk');
 }
 
 console.log('6. grouped renderer');
@@ -144,6 +116,17 @@ console.log('6. grouped renderer');
   has('second series distinct', html, 'class="s1"');
   has('option label is the row key', html, 'React');
   has('raw value shown', html, '45');
+
+  // Labels and keys are model-generated and reach the chart body directly.
+  const evil = prep([
+    { label: '<script>x()</script>', description: 'a {chart: grouped, "<b>":1}' },
+    { label: 'ok', description: 'b {"<b>":2}' },
+  ]);
+  const e = pickForm('grouped', evil);
+  const ehtml = renderChart(e.name, evil, scaleOf(evil), e.shape);
+  lacks('a script tag in a label is escaped', ehtml, '<script>x()');
+  has('it renders as text', ehtml, '&lt;script&gt;');
+  lacks('a tag in a metric key is escaped too', ehtml, '<h4><b></h4>');
 }
 
 console.log('7. the page uses the requested form');
@@ -179,163 +162,18 @@ console.log('8. matrix renderer');
   has('missing value is an em dash', html, '—');
   has('rank fill carries the series class', html, 'class="fill s0"');
   eq('one row per option', (html.match(/<tr><th scope="row">/g) || []).length, 3);
+
+  const evil = prep([
+    { label: '<img src=x onerror=y>', description: 'a {chart: matrix, cost:$1}' },
+    { label: 'ok', description: 'b {cost:$2}' },
+  ]);
+  const e = pickForm('matrix', evil);
+  const ehtml = renderChart(e.name, evil, scaleOf(evil), e.shape);
+  lacks('a tag in a row header is escaped', ehtml, '<img src=x');
+  has('it renders as text', ehtml, '&lt;img');
 }
 
-console.log('9. coordinate clamping');
-{
-  const { num } = require('../hooks/lib/charts.js');
-  eq('NaN becomes the floor', num(Number.NaN, 5, 100), 5);
-  eq('Infinity is clamped', num(Infinity, 5, 100), 100);
-  eq('-Infinity is clamped', num(-Infinity, 5, 100), 5);
-  eq('undefined becomes the floor', num(undefined, 5, 100), 5);
-  eq('a string number is clamped', num('7', 5, 100), 7);
-  eq('a non-numeric string becomes the floor', num('abc', 5, 100), 5);
-  eq('below range clamps up', num(-3, 5, 100), 5);
-  eq('above range clamps down', num(999, 5, 100), 100);
-  eq('rounded to 2 decimals', num(7.129, 5, 100), 7.13);
-}
-
-console.log('10. scatter renderer');
-{
-  const options = prep([
-    { label: 'A', description: 'a {chart: scatter, cost:$20, lat:40ms}' },
-    { label: 'B', description: 'b {cost:$5, lat:180ms}' },
-  ]);
-  const { name, shape } = pickForm('scatter', options);
-  eq('form is scatter', name, 'scatter');
-  const html = renderChart(name, options, scaleOf(options), shape);
-  has('svg emitted', html, '<svg viewBox="0 0 640 360"');
-  has('axis label names the first numeric key', html, '>cost<');
-  has('axis label names the second', html, '>lat<');
-  eq('one point per option', (html.match(/<circle /g) || []).length, 2);
-  has('points carry a series class', html, '<circle class="s0"');
-  eq('no non-finite coordinate reaches an attribute', /="(NaN|Infinity|-Infinity)"/.test(html), false);
-
-  // Three references per axis, and the value each axis tops out at. Both axes
-  // are normalized to their own key's largest value, so naming that value is
-  // the whole of the scale — every other position is a fraction of it.
-  eq('three gridlines per axis', (html.match(/class="gridline"/g) || []).length, 6);
-  eq('one tick per axis', (html.match(/class="atick"/g) || []).length, 2);
-  has('the x tick is the largest cost, as authored', html, '>$20<');
-  has('the y tick is the largest latency, as authored', html, '>180ms<');
-  // An ordinal axis ranks by its word's position in the vocabulary, so the tick
-  // has to name the highest word rather than the largest number.
-  const ord = prep([
-    { label: 'A', description: 'a {chart: scatter, cost:$20, risk:low}' },
-    { label: 'B', description: 'b {cost:$5, risk:critical}' },
-  ]);
-  const o = pickForm('scatter', ord, scaleOf(ord));
-  has('an ordinal axis ticks its highest word',
-    renderChart(o.name, ord, scaleOf(ord), o.shape), '>critical<');
-  // Data over grid, never under it.
-  eq('the grid is drawn first',
-    html.indexOf('class="gridline"') < html.indexOf('<circle '), true);
-}
-
-console.log('10b. scatter degrades when an option is missing an axis');
-{
-  // B has no `lat`: honouring scatter here would drop B's point from the
-  // chart, and since non-bars forms hide the card metric rows too, B's
-  // `cost` would then appear nowhere on the page.
-  const options = prep([
-    { label: 'A', description: 'a {chart: scatter, cost:$20, lat:40ms}' },
-    { label: 'B', description: 'b {cost:$5}' },
-  ]);
-  const { name } = pickForm('scatter', options);
-  eq('scatter is not honoured when an option lacks an axis', name, 'grouped');
-}
-
-console.log('11. svg labels are escaped');
-{
-  const options = prep([
-    { label: '<script>x()</script>', description: 'a {chart: scatter, cost:$20, lat:40ms}' },
-    { label: 'ok', description: 'b {cost:$5, lat:180ms}' },
-  ]);
-  const { name, shape } = pickForm('scatter', options);
-  const html = renderChart(name, options, scaleOf(options), shape);
-  lacks('script tag escaped inside svg', html, '<script>x()');
-  has('rendered as escaped text', html, '&lt;script&gt;');
-}
-
-console.log('12. radar renderer');
-{
-  const options = prep([
-    { label: 'A', description: 'a {chart: radar, cost:$20, lat:40ms, risk:low}' },
-    { label: 'B', description: 'b {cost:$5, lat:180ms, risk:high}' },
-  ]);
-  const { name, shape } = pickForm('radar', options);
-  eq('form is radar', name, 'radar');
-  const html = renderChart(name, options, scaleOf(options), shape);
-  // Rings are polygons too, so the data polygons are counted by their class.
-  eq('one data polygon per option', (html.match(/class="poly /g) || []).length, 2);
-  eq('one axis line per numeric key', (html.match(/<line class="axis"/g) || []).length, 3);
-  has('axis labelled', html, '>cost<');
-  has('polygon carries a series class', html, 'class="poly s1"');
-  has('legend lists the options', html, 'class="legend"');
-  eq('no non-finite coordinate reaches an attribute', /="[^"]*(NaN|Infinity)/.test(html), false);
-  // Three axes, two options: six "x,y" pairs across the two polygons.
-  eq('three points per polygon',
-    (html.match(/points="[^"]*"/g) || []).every((p) => p.split(' ').length === 3), true);
-
-  // Four rings, and no number on any of them: each axis is normalized to its
-  // own key's largest value, so one radius stands for a different quantity per
-  // spoke and a radial tick would be true of at most one. The vertices carry
-  // the values instead.
-  eq('four concentric rings', (html.match(/class="gridline"/g) || []).length, 4);
-  eq('the rings carry no ticks', (html.match(/class="atick"/g) || []).length, 0);
-  eq('the rings are drawn first',
-    html.indexOf('class="gridline"') < html.indexOf('class="poly '), true);
-
-  // A key name anchored in the middle reaches back along its own axis into the
-  // value label sitting just past r. Anchoring it outward is what keeps twenty
-  // labels apart on a four-option, four-axis chart — the most the tool can
-  // produce. Three axes point up, down-right and down-left.
-  // Scoped to the key names: the vertex value labels are centred too.
-  const anchors = (src, kind) =>
-    (src.match(new RegExp(`class="alabel"[^>]*text-anchor="${kind}"`, 'g')) || []).length;
-  eq('a near-vertical axis keeps the middle anchor', anchors(html, 'middle'), 1);
-  eq('a rightward axis anchors at the start', anchors(html, 'start'), 1);
-  eq('a leftward axis anchors at the end', anchors(html, 'end'), 1);
-
-  const four = prep([
-    { label: 'A', description: 'a {chart: radar, w:1, x:2, y:3, z:low}' },
-    { label: 'B', description: 'b {w:2, x:1, y:4, z:high}' },
-  ]);
-  const f = pickForm('radar', four);
-  const fhtml = renderChart(f.name, four, scaleOf(four), f.shape);
-  // Four axes point up, right, down and left: two vertical, one each side.
-  eq('four axes split two vertical and one per side',
-    ['middle', 'start', 'end'].map((k) => anchors(fhtml, k)).join(','), '2,1,1');
-}
-
-console.log('13. radar degrades when an option is missing an axis');
-{
-  // B has no `risk`. Plotting it at the centre would read as the best risk of
-  // the two rather than as no data, so the axis set drops below three and the
-  // question falls to matrix, which shows the gap as an em dash.
-  const options = prep([
-    { label: 'A', description: 'a {chart: radar, cost:$20, lat:40ms, risk:low}' },
-    { label: 'B', description: 'b {cost:$5, lat:180ms}' },
-  ]);
-  const { name, shape } = pickForm('radar', options);
-  eq('radar is not honoured when an option lacks an axis', name, 'matrix');
-  const html = renderChart(name, options, scaleOf(options), shape);
-  has('the gap is shown, not plotted as zero', html, '—');
-  eq('no polygon is drawn', (html.match(/<polygon /g) || []).length, 0);
-
-  // Three axes all four options carry: radar still stands.
-  const full = prep([
-    { label: 'A', description: 'a {chart: radar, cost:$20, lat:40ms, risk:low}' },
-    { label: 'B', description: 'b {cost:$5, lat:180ms, risk:high}' },
-  ]);
-  const picked = pickForm('radar', full);
-  eq('a complete axis set is still honoured', picked.name, 'radar');
-  const svg = renderChart(picked.name, full, scaleOf(full), picked.shape);
-  eq('no vertex sits at the centre',
-    svg.includes('320,180'), false);
-}
-
-console.log('14. briefings');
+console.log('9. briefings');
 {
   const page = renderPage([{
     question: 'Which?\n<!--brief-->\n## Today\n\n| stage | p99 |\n|---|---|\n| render | 710ms |',
@@ -371,7 +209,7 @@ console.log('14. briefings');
   lacks('no briefing markup when absent', bare, 'class="brief"');
 }
 
-console.log('15. briefing without metrics');
+console.log('10. briefing without metrics');
 {
   const page = renderPage([{
     question: 'Which?',
@@ -390,7 +228,7 @@ console.log('15. briefing without metrics');
   lacks('an unbriefed card stays silent about it', neither, 'class="none"');
 }
 
-console.log('16. briefing escaping through renderPage');
+console.log('11. briefing escaping through renderPage');
 {
   const page = renderPage([{
     question: 'Which?\n<!--brief-->\n<script>alert(1)</script>',
@@ -403,7 +241,7 @@ console.log('16. briefing escaping through renderPage');
   has('option briefing escaped', page, '&lt;img onerror=x&gt;');
 }
 
-console.log('17. every ending closes the page');
+console.log('12. every ending closes the page');
 {
   const page = renderPage(Q([{ label: 'A', description: 'x. {c:1}' }]),
     { nonce: 'ab'.repeat(16), waitMs: 1000 });
@@ -416,7 +254,7 @@ console.log('17. every ending closes the page');
     (page.match(/innerHTML =/g) || []).length, 1);
 }
 
-console.log('18. the recommended badge');
+console.log('13. the recommended badge');
 {
   const page = renderPage(Q([
     { label: 'Keep it (Recommended)', description: 'x. {c:1}' },
@@ -429,7 +267,7 @@ console.log('18. the recommended badge');
     '<h3>Replace it<span class="rec"');
 }
 
-console.log('19. motion and hover');
+console.log('14. motion and hover');
 {
   const page = renderPage(Q([{ label: 'A', description: 'x. {c:1}' }]),
     { nonce: 'ab'.repeat(16), waitMs: 1000 });
@@ -440,7 +278,7 @@ console.log('19. motion and hover');
   lacks('selecting a card shifts no text', page, 'padding-left:calc(1.1rem - 2px)');
 }
 
-console.log('20. mermaid loads only when a diagram is on the page');
+console.log('15. mermaid loads only when a diagram is on the page');
 {
   const withDiagram = (brief) => renderPage([{
     question: 'Which?\n<!--brief-->\n' + brief,
@@ -470,7 +308,7 @@ console.log('20. mermaid loads only when a diagram is on the page');
     '.mermaid:not([data-processed])');
 }
 
-console.log('21. the vendored bundle is intact');
+console.log('16. the vendored bundle is intact');
 {
   const crypto = require('node:crypto');
   const fs = require('node:fs');
@@ -486,31 +324,99 @@ console.log('21. the vendored bundle is intact');
     bundle.toString('latin1').slice(-200), 'globalThis["mermaid"]');
 }
 
-console.log('22. no SVG mark class doubles as a DOM class');
+console.log('17. trade-off lists on a card');
 {
-  // Both owners write into one stylesheet, so a name used in charts.js and in
-  // render.js gets both rule bodies. It survived twice by luck — stroke is
-  // inert on a div and display:grid is inert on a polygon — and would stop
-  // surviving the first time either rule grew a property the other shares.
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const read = (f) => fs.readFileSync(path.join(__dirname, '..', 'hooks', 'lib', f), 'utf8');
-  // A class list can end in an interpolated slot (`class="poly \${seriesClass(i)}"`),
-  // so tokens carrying template syntax are dropped rather than the whole list.
-  const names = (src, re) => new Set([...src.matchAll(re)]
-    .flatMap((m) => m[m.length - 1].trim().split(/\s+/))
-    .filter((c) => c && !/[${}]/.test(c)));
-  // Only classes on SVG geometry and text: HTML classes are shared on purpose
-  // (`grouped` reuses the card's bar markup), and the series slots s0-s3 are
-  // shared by design — one --c property, read by every mark.
-  const marks = names(read('charts.js'),
-    /<(?:line|polygon|circle|text|path)[^>]*class="([^"]+)"/g);
-  const dom = names(read('render.js'), /class="([^"]+)"/g);
-  for (const slot of ['s0', 's1', 's2', 's3']) marks.delete(slot);
-  eq('no SVG mark class is also a DOM class',
-    [...marks].filter((c) => dom.has(c)).join(',') || 'none', 'none');
-  eq('the marks are the ones we expect', [...marks].sort().join(','),
-    'alabel,atick,axis,gridline,plabel,poly,vlabel');
+  const page = renderPage([{
+    question: 'Which?',
+    options: [
+      { label: 'A', description: 'a {chart: matrix, cost:$12}<!--brief-->\n+ fast\n- untyped' },
+      { label: 'B', description: 'b {cost:$6}<!--brief-->\n- ordinary\n- bullets' },
+    ],
+  }]);
+  has('the marked run reaches the card', page, '<ul class="md-list procon">');
+  has('a pro item', page, '<li class="pro">fast</li>');
+  has('a con item', page, '<li class="con">untyped</li>');
+  has('a dash-only run stays an ordinary list', page, '<ul class="md-list"><li>ordinary</li>');
+
+  // The glyph is what carries the valence: red and green collapse under
+  // deuteranopia, so a rule that only set a color would say nothing to a
+  // reader who cannot separate them.
+  has('the pro glyph is a plus', page, '.procon .pro::before { content:"+";');
+  has('the con glyph is a true minus, not a hyphen', page, 'content:"\\2212"');
+  has('the pro token names both schemes', page, '--pro:light-dark(#046b34,#3fbf72)');
+  has('and the con token too', page, '--con:light-dark(#b3261e,#f2837a)');
+  // One grid column for the glyph, so a pro and a con start their text at the
+  // same x whatever the mix.
+  has('the glyph gets its own column', page,
+    '.procon li { display:grid; grid-template-columns:.95rem 1fr;');
+  has('and the browser bullet is off', page, '.procon { list-style:none;');
+}
+
+console.log('18. the scheme toggle');
+{
+  const page = renderPage(Q([{ label: 'A', description: 'x. {c:1}' }]),
+    { nonce: 'ab'.repeat(16), waitMs: 1000 });
+
+  // prefers-color-scheme cannot be overridden from CSS, so the reader's pick
+  // rides on color-scheme and every token reads it through light-dark().
+  has('the button ships in the shell', page, '<button id="scheme"');
+  has('and starts hidden', page, 'hidden');
+  has('an override selector for each direction', page,
+    ':root[data-scheme="light"] { color-scheme: light; }');
+  has('and the other', page, ':root[data-scheme="dark"] { color-scheme: dark; }');
+  // A browser without light-dark() would get a button that sets a property no
+  // token reads, so support is confirmed before it is shown.
+  has('support is feature-detected', page, "CSS.supports('color', 'light-dark(#fff,#000)')");
+  has('the pick is written to the root', page, 'root.dataset.scheme =');
+
+  // Every token carries a bare hex before its light-dark(), so an engine that
+  // drops the function keeps the light theme instead of losing the token.
+  const tokens = ['fg', 'mut', 'line', 'accent', 'card', 'bg', 'ok',
+    's0', 's1', 's2', 'pro', 'con'];
+  const missing = tokens.filter((t) => !page.includes(`--${t}:light-dark(`));
+  eq('every two-scheme token uses light-dark', missing.join(',') || 'none', 'none');
+  const unguarded = tokens.filter((t) => {
+    const at = page.indexOf(`--${t}:light-dark(`);
+    return !page.slice(Math.max(0, at - 40), at).includes(`--${t}:#`);
+  });
+  eq('and each has a bare-hex fallback before it', unguarded.join(',') || 'none', 'none');
+  // --s3 clears both surfaces, so it is one value on purpose, not an omission.
+  lacks('--s3 stays a single value', page, '--s3:light-dark(');
+
+  // Mermaid bakes computed colors into its SVG, so only a page that loaded the
+  // bundle carries the redraw hook.
+  lacks('a page with no diagram gets no redraw hook', page, '__askqRetheme =');
+  const withDiagram = renderPage([{
+    question: 'Q\n<!--brief-->\n```mermaid\nflowchart LR\n  A[x] --> B[y]\n```',
+    options: [{ label: 'A', description: 'a {c:1}' }],
+  }]);
+  has('a diagram page can redraw itself', withDiagram, 'window.__askqRetheme = function');
+  has('and stashes the source before the first pass', withDiagram, 'src: el.textContent');
+  has('the redraw clears the processed flag', withDiagram,
+    "removeAttribute('data-processed')");
+  // A custom property is substitution-only, so getPropertyValue would hand
+  // mermaid the literal light-dark() text and it would fall back to its grey.
+  has('theme values are resolved through a probe', withDiagram, "probe.style.color = 'var('");
+  // run(config) replaces the defaults instead of merging, so the selector and
+  // the flag are still named together on the redraw path.
+  eq('both run keys survive the refactor',
+    (withDiagram.match(/querySelector: '\.mermaid:not\(\[data-bad\]\)', suppressErrors: true/g) || []).length, 1);
+}
+
+console.log('19. a filled accent has its own ink');
+{
+  const page = renderPage(Q([{ label: 'A', description: 'x. {c:1}' }]),
+    { nonce: 'ab'.repeat(16), waitMs: 1000 });
+  // --accent is ink on a card and fill under a glyph, and those pull opposite
+  // ways: #fff over the dark accent measures 2.62:1, under the 4.5:1 floor for
+  // the button label. One value clears both schemes here (5.05:1 and 7.50:1)
+  // because the accent is mid-tone in each.
+  has('the ink token exists', page, '--on-accent:#0b0b0b;');
+  has('the send button reads it', page, 'background:var(--accent); color:var(--on-accent)');
+  has('and so does the tick', page, 'color:var(--on-accent)');
+  lacks('no filled accent site hardcodes white', page, 'color:#fff;');
+  // A single value, deliberately: a scheme-flipping accent would need a pair.
+  lacks('and it needs no light-dark pair', page, '--on-accent:light-dark(');
 }
 
 console.log(fail ? 'FAIL' : 'PASS');

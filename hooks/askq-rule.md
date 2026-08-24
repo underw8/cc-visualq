@@ -10,11 +10,11 @@ metric tag: `{chart: grouped, cost: $12/mo, setup: 2h, risk: low}`
   millions/billions from the other values under the same key, so keep one
   dimension per key.
 - `chart` picks the form, on the first option only:
-  grouped (magnitudes side by side, any dims) · matrix (exact values in a
-  table) · scatter (two dims traded off) · radar (3+ dims, ≤4 options,
-  whole-profile shape) · bars (default, per-option).
-- Tag every option of a question, or none of them. `scatter` needs every
-  option to carry both its axes and quietly falls back when one doesn't.
+  grouped (magnitudes side by side, one block per key) · matrix (exact values
+  in a table, best when a key is missing on some option) · bars (default,
+  per-option, draws no comparison).
+- Tag every option of a question, or none of them. A key an option has no
+  value for shows as an em dash, so an incomplete set still renders honestly.
 - Name a form whenever two or more keys are shared. The default `bars` draws
   no comparison at all, only a row per option.
 - The description before the tag states what you give up by picking it,
@@ -36,6 +36,12 @@ it only when the labels alone settle the choice.
   choice. Up to ~15 lines.
 - On an option: the consequence of picking that one — what it costs later, what
   it forecloses. Not a longer description. Up to ~6 lines.
+- Trade-offs go in a `+`/`-` list: a run of bullets containing at least one `+`
+  renders as pros and cons, `+` items marked with a green plus and `-` items
+  with a red minus. Two to four lines, pros first. This is the shape to reach
+  for on an option whenever the choice has an upside and a cost that no metric
+  captures — a maturity gap, an ecosystem hole, a lock-in. A run of `-` alone
+  is an ordinary list, so a `+` is required to get the treatment.
 - Cut whatever the reader would guess unaided: the labels, the obvious upside,
   a metric already in the tag.
 - The briefing goes last, after the metric tag.
@@ -43,8 +49,13 @@ it only when the labels alone settle the choice.
   `|---|` separator row, fenced code, a ```` ```mermaid ```` fence, `**strong**`,
   `*em*`, `` `code` ``, headings `#` to `####`. Links and images render as
   literal text.
-- A diagram only when the thing being decided *is* a shape — a flow, a
-  dependency, a sequence. Never a diagram of the options; that is what the
-  comparison above it already draws. Mistyped mermaid renders as its own
-  source, so a diagram you are unsure of costs the reader a code block.
+- Prefer a ```` ```mermaid ```` diagram over prose whenever the explanation is
+  a shape: a flow, a sequence, a dependency, a state machine, where a change
+  lands in an existing system. A diagram carries that in one glance where a
+  paragraph makes the reader rebuild it. Reach for one by default when
+  explaining how something works, and keep the prose for what the diagram
+  cannot say — the constraint, the measurement, the consequence.
+- Never a diagram of the options; that is what the comparison above it already
+  draws. Keep it under ~15 nodes: past that it stops being one glance. Mistyped
+  mermaid renders as its own source, so a diagram costs a code block at worst.
 - A briefing that restates the options is worse than none.

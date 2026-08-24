@@ -28,8 +28,13 @@ const AMBIGUOUS = new Set(['m', 'b']);
 const ORDINALS = ['none', 'minimal', 'low', 'medium', 'high', 'critical'];
 const ORDINAL_MAX = ORDINALS.length - 1;
 
-// Leading currency/sign, digits with optional separators, then a unit suffix.
-const NUMERIC = /^([+-]?)\s*[$€£¥]?\s*(\d[\d,_]*(?:\.\d+)?)\s*([a-z%µ]*)$/i;
+// Leading currency/sign, digits with optional separators, a unit suffix, then
+// an optional `/period` rate. The rate is dropped rather than scaled: `$12/mo`
+// and `$40/mo` rank against each other on the 12 and the 40, and one key
+// carrying both a rate and a one-off is already outside the one-dimension-per-key
+// rule. Without this the rule's own `$12/mo` example parses as text and draws
+// no bar at all.
+const NUMERIC = /^([+-]?)\s*[$€£¥]?\s*(\d[\d,_]*(?:\.\d+)?)\s*([a-z%µ]*)(?:\/[a-z]+)?$/i;
 
 // Returns { value, dimension } or null when the text is not numeric.
 // `value` is in the dimension's canonical unit; dimension is null when unitless.

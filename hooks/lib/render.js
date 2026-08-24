@@ -10,29 +10,53 @@ const { renderMd } = require('./md.js');
 const { pageScript, mermaidScript } = require('./page-script.js');
 
 const STYLES = `
-  /* --ok is the accent, not a green: selection means chosen, not successful,
-     and a green tick beside the green --s3 series read as a status light. */
+  /* One declaration per token, light value then dark. prefers-color-scheme
+     cannot be overridden from CSS, so a scheme the reader picks has to come
+     through color-scheme, which light-dark() reads and the toggle sets. The
+     bare hex before each light-dark() is the fallback: an engine without the
+     function drops the second declaration and keeps the light theme rather
+     than losing the token altogether.
+     --ok is the accent, not a green: selection means chosen, not successful,
+     and a green tick beside the green --s3 series read as a status light.
+     --accent is ink at one site and fill at another, and those pull opposite
+     ways: #fff over the dark accent measures 2.62:1. --on-accent is the ink for
+     a filled accent, read by #send and .tick::after, and any third filled site.
+     One value serves both schemes because the accent is mid-tone in each
+     (5.05:1 light, 7.50:1 dark); a scheme-flipping accent would need a pair.
+     --s3 repeats across schemes because that green clears both surfaces. */
   :root { color-scheme: light dark; --ease:cubic-bezier(.2,.7,.3,1);
-          --fast:.12s; --mid:.22s; --fg:#1f1e1c; --mut:#6b6a63; --line:#e5e3d9;
-          --accent:#c96442; --card:#faf9f5; --bg:#f2f0e9; --ok:#c96442;
-          --s0:#2a78d6; --s1:#eda100; --s2:#e87ba4; --s3:#008300; }
-  @media (prefers-color-scheme: dark) {
-    /* --s3 intentionally repeats the light value: that green clears both
-       surfaces, so the repeat is not a leftover. */
-    :root { --fg:#f5f4ef; --mut:#a3a19a; --line:#35352f;
-            --accent:#e08a68; --card:#262624; --bg:#191917; --ok:#e08a68;
-            --s0:#3987e5; --s1:#c98500; --s2:#d55181; --s3:#008300; }
-  }
+          --fast:.12s; --mid:.22s;
+          --fg:#1f1e1c; --fg:light-dark(#1f1e1c,#f5f4ef);
+          --mut:#6b6a63; --mut:light-dark(#6b6a63,#a3a19a);
+          --line:#e5e3d9; --line:light-dark(#e5e3d9,#35352f);
+          --accent:#c96442; --accent:light-dark(#c96442,#e08a68);
+          --card:#faf9f5; --card:light-dark(#faf9f5,#262624);
+          --bg:#f2f0e9; --bg:light-dark(#f2f0e9,#191917);
+          --ok:#c96442; --ok:light-dark(#c96442,#e08a68);
+          --s0:#2a78d6; --s0:light-dark(#2a78d6,#3987e5);
+          --s1:#eda100; --s1:light-dark(#eda100,#c98500);
+          --s2:#e87ba4; --s2:light-dark(#e87ba4,#d55181);
+          --s3:#008300;
+          --pro:#046b34; --pro:light-dark(#046b34,#3fbf72);
+          --con:#b3261e; --con:light-dark(#b3261e,#f2837a);
+          --on-accent:#0b0b0b; }
+  /* The toggle writes one property and every token above follows it. */
+  :root[data-scheme="light"] { color-scheme: light; }
+  :root[data-scheme="dark"] { color-scheme: dark; }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; }
   body { margin:0; padding:2.5rem 1.5rem 7rem; background:var(--bg); color:var(--fg);
          font:15px/1.55 ui-sans-serif,-apple-system,system-ui,sans-serif; }
   main { max-width:64rem; margin:0 auto; }
   section + section { margin-top:2.5rem; padding-top:2rem; border-top:1px solid var(--line); }
-  /* The serif stops at the question. Cards, charts and briefings stay sans:
-     a serif face in chart chrome costs legibility at small sizes. */
-  h2 { font-family:ui-serif,Georgia,"Times New Roman",serif; font-weight:600;
-       font-size:1.35rem; margin:0 0 1.25rem; letter-spacing:-.01em; }
+  /* The serif stops at the question. Cards, charts and briefings stay sans: a
+     serif face in chart chrome costs legibility at small sizes. At regular
+     weight, not bold — the face is the editorial note, and size alone
+     carries the hierarchy. Twice the body text, in em off the inherited size
+     rather than rem: rem would double the root, not the 15px the page is
+     actually set in. */
+  h2 { font-family:ui-serif,Georgia,"Times New Roman",serif; font-weight:400;
+       font-size:2em; margin:0 0 1.25rem; letter-spacing:-.01em; }
   h2 em { color:var(--mut); font-weight:400; font-size:.85rem; font-style:normal; }
   h3 { font-size:.95rem; font-weight:650; margin:0 0 .4rem; }
   .grid { display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(21rem,1fr)); }
@@ -56,7 +80,7 @@ const STYLES = `
   .card[aria-pressed="true"] .tick, .card[aria-checked="true"] .tick {
                 background:var(--ok); border-color:var(--ok); }
   .card[aria-pressed="true"] .tick::after, .card[aria-checked="true"] .tick::after {
-                content:"\\2713"; color:#fff; font-size:.7rem;
+                content:"\\2713"; color:var(--on-accent); font-size:.7rem;
                 position:absolute; inset:0; display:grid; place-items:center;
                 animation:pop .18s var(--ease); }
   .card .kbd { position:absolute; top:.8rem; right:2.4rem; width:1.15rem; height:1.15rem;
@@ -83,7 +107,7 @@ const STYLES = `
            backdrop-filter:blur(8px);
            border-top:1px solid var(--line); display:flex; align-items:center; gap:1rem; }
   #send { font:inherit; font-weight:600; padding:.5rem 1.4rem; border-radius:7px;
-          border:0; background:var(--accent); color:#fff; cursor:pointer;
+          border:0; background:var(--accent); color:var(--on-accent); cursor:pointer;
           transition:background-color var(--mid), transform var(--fast) var(--ease),
                      box-shadow var(--fast), opacity var(--mid); }
   #send:hover:not([disabled]) { background:color-mix(in srgb, var(--accent) 88%, #000);
@@ -100,8 +124,8 @@ const STYLES = `
            padding:1rem 1.1rem; margin:0 0 1rem; overflow-x:auto; }
   .chart h4 { margin:0 0 .35rem; font-size:.8rem; font-weight:650; color:var(--mut); }
   .gblock + .gblock { margin-top:.9rem; }
-  /* One custom property per option slot; every series-colored mark below
-     reads var(--c), so a fifth form adds no color rules. */
+  /* One custom property per option slot; every series-colored mark reads
+     var(--c), so a new mark costs one rule and not one per option slot. */
   .s0 { --c:var(--s0); } .s1 { --c:var(--s1); }
   .s2 { --c:var(--s2); } .s3 { --c:var(--s3); }
   table.matrix { width:100%; border-collapse:collapse; font-size:.82rem; }
@@ -119,34 +143,6 @@ const STYLES = `
           transition:opacity var(--mid); }
   table.matrix tbody tr:hover .fill { opacity:.34; }
   .cv { position:relative; }
-  /* The cap bounds the drawing, not the viewBox: the scale is
-     min(width/640, cap/360) and the cap always wins, so this is the radar's
-     radius and the scatter's plot area. */
-  .chart svg { display:block; width:100%; height:auto; max-height:28rem; }
-  .axis { stroke:var(--line); stroke-width:1.5; }
-  /* --line is already the one-shade-off-surface step, so a hairline in it is
-     recessive without dimming. Radar rings are polygons: fill:none is what
-     keeps them from painting over the data behind them. */
-  .gridline { stroke:var(--line); stroke-width:1; fill:none; }
-  .atick { fill:var(--mut); font-size:10px; font-variant-numeric:tabular-nums; }
-  .alabel { fill:var(--mut); font-size:12px; }
-  .plabel { fill:var(--fg); font-size:12px; font-weight:600; }
-  /* Radar vertex values. Text wears a text token, never the series color:
-     identity comes from the mark beside it, magnitude from the number. */
-  .vlabel { fill:var(--fg); font-size:10px; font-variant-numeric:tabular-nums; }
-  /* transform-box keeps the scale about the mark's own centre, so a hovered
-     point grows in place rather than sliding toward the origin. */
-  circle { fill:var(--c); transform-box:fill-box; transform-origin:center;
-           transition:transform var(--mid) var(--ease); }
-  circle:hover { transform:scale(1.45); }
-  .poly { fill:var(--c); stroke:var(--c); fill-opacity:.16; stroke-width:2;
-          transition:fill-opacity var(--mid); }
-  .poly:hover { fill-opacity:.32; }
-  .legend { display:flex; flex-wrap:wrap; gap:.35rem 1rem; margin-top:.6rem;
-            font-size:.78rem; color:var(--mut); }
-  .lg { display:inline-flex; align-items:center; gap:.35rem; }
-  .lg i { width:.7rem; height:.7rem; border-radius:2px; display:inline-block;
-          background:var(--c); }
   .card.other { cursor:text; }
   .card.other input { width:100%; font:inherit; font-size:.875rem; color:inherit;
         background:transparent; border:0; border-bottom:1px solid var(--line);
@@ -161,6 +157,13 @@ const STYLES = `
         transition:border-color var(--mid), box-shadow var(--mid); }
   .notefield textarea:focus { outline:0; border-color:var(--accent);
         box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+  #scheme { position:fixed; top:1rem; right:1.25rem; z-index:1; width:2rem; height:2rem;
+            display:grid; place-items:center; padding:0; font:inherit; font-size:.9rem;
+            line-height:1; cursor:pointer; border:1px solid var(--line); border-radius:50%;
+            background:var(--card); color:var(--mut);
+            transition:color var(--mid), border-color var(--mid); }
+  #scheme:hover { color:var(--fg); border-color:var(--accent); }
+  #scheme[hidden] { display:none; }
   #cancel { margin-left:auto; font:inherit; padding:.5rem 1rem; border-radius:7px; cursor:pointer;
             border:1px solid var(--line); background:transparent; color:var(--mut);
             transition:color var(--mid), border-color var(--mid), background-color var(--mid); }
@@ -172,15 +175,28 @@ const STYLES = `
            border-radius:0; padding:.75rem 0 0; margin:.85rem 0 0; }
   .brief > :first-child { margin-top:0; }
   .brief > :last-child { margin-bottom:0; }
+  /* Prose is one size throughout a briefing. A lead paragraph set larger than
+     the paragraph under it reads as two type scales in one block; code and
+     tables step down because they are data, not prose. */
   .md-p { margin:0 0 .7rem; font-size:.875rem; }
-  /* The question briefing opens with the TL;DR, so it carries more weight
-     than the detail under it. Cards are summaries already. */
-  section > .brief > .md-p:first-child { font-size:1.02rem; line-height:1.5;
-           color:var(--fg); margin-bottom:.9rem; }
+  /* The question briefing opens with the TL;DR, so it gets the gap that sets
+     it off from the detail. Spacing only: prose is one size and one ink
+     throughout, so nothing here changes either. */
+  section > .brief > .md-p:first-child { margin-bottom:.9rem; }
   .brief h4 { margin:1rem 0 .4rem; font-size:.8rem; font-weight:650;
            color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
-  .md-list { margin:0 0 .7rem; padding-left:1.1rem; font-size:.85rem; }
+  .md-list { margin:0 0 .7rem; padding-left:1.1rem; font-size:.875rem; }
   .md-list li { margin:.15rem 0; }
+  /* A trade-off list. The glyph carries the valence and the color only
+     reinforces it: red and green collapse under deuteranopia, plus and minus
+     do not. Text keeps its inherited ink, so a card of cons is no harder to
+     read than a card of pros. */
+  .procon { list-style:none; padding-left:0; }
+  .procon li { display:grid; grid-template-columns:.95rem 1fr; align-items:baseline; }
+  .procon li::before { font-weight:700; }
+  .procon .pro::before { content:"+"; color:var(--pro); }
+  /* U+2212, not a hyphen: it matches the plus in width and optical weight. */
+  .procon .con::before { content:"\\2212"; color:var(--con); }
   .card .md-list { color:var(--mut); }
   .md-pre { margin:0 0 .8rem; padding:.7rem .85rem; overflow-x:auto; font-size:.8rem;
            background:color-mix(in srgb, var(--fg) 5%, transparent); border-radius:7px; }
@@ -286,7 +302,7 @@ function renderQuestion(q, qi) {
   let form = 'bars';
   let chart = '';
   try {
-    const picked = pickForm(requested, options, scale);
+    const picked = pickForm(requested, options);
     chart = renderChart(picked.name, options, scale, picked.shape);
     form = picked.name;
   } catch {
@@ -325,6 +341,11 @@ function renderQuestion(q, qi) {
   </section>`;
 }
 
+// Hidden by default: without light-dark() the button would set a property no
+// token reads, so the script unhides it only once support is confirmed.
+const SCHEME = `<button id="scheme" type="button" hidden
+  aria-label="Switch between light and dark"></button>`;
+
 const FOOTER = `<footer><span id="status">Pick an option.</span>
 <button id="jump" type="button" hidden></button>
 <button id="cancel" type="button">Answer in terminal</button>
@@ -337,7 +358,7 @@ function renderPage(questions, { nonce = '', waitMs = 0 } = {}) {
   const mermaid = body.includes('class="mermaid"') ? mermaidScript() : '';
   return `<!doctype html><html><head><meta charset="utf-8">
 <title>Answer the question</title>
-<style>${STYLES}</style></head><body><main>${body}</main>
+<style>${STYLES}</style></head><body>${SCHEME}<main>${body}</main>
 ${FOOTER}${pageScript(nonce, questions.length, waitMs)}${mermaid}
 </body></html>`;
 }
