@@ -35,6 +35,118 @@ A `SessionStart` hook injects an option-authoring rule (`hooks/askq-rule.md`)
 into every session, so Claude tags options with measurable dimensions on its
 own — there's nothing to add to your own `CLAUDE.md`.
 
+## How it works
+
+A `PreToolUse` hook on `AskUserQuestion` serves the options as an HTML
+comparison over loopback, blocks until a card is clicked, and answers the tool
+directly. Every path that isn't an explicit click emits nothing, which renders
+no decision and lets the terminal dialog ask unchanged.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CC as Claude Code
+    participant H as hooks/askq.js
+    participant R as lib/render.js
+    participant L as lib/launch.js
+    participant B as embedded browser
+
+    Note over CC: SessionStart injected askq-rule.md,<br/>so options carry metric tags and briefings
+    CC->>H: PreToolUse AskUserQuestion, tool_input on stdin
+    H->>H: stripTags: split briefing, parse metric tag
+    alt no metric tag and no briefing
+        H-->>CC: exit 0, no output
+        Note over CC: terminal dialog asks unchanged
+    else something to draw
+        H->>H: mint nonce
+        H->>R: renderPage
+        R-->>H: HTML
+        H->>H: listen 127.0.0.1:0
+        H->>L: openUrl
+        alt no launcher succeeded
+            H-->>CC: exit 0, no output
+        else launched
+            B->>H: GET / with nonce
+            Note over H: arrived = true
+            B->>H: GET /ping every 3s
+            B->>H: POST /answer with nonce, picked, other, notes
+            H->>H: timing-safe nonce compare
+            H->>H: filter labels against the tool's own set
+            H-->>CC: allow + updatedInput.answers
+        end
+    end
+```
+
+Three ways the hook stops waiting without an answer: `ARRIVE_MS` 10s with
+nothing fetching the page, `WAIT_MS` 240s with nothing posting, or a rejected
+POST giving up. `WAIT_MS` stays below the hook entry's `timeout: 300` so the
+process exits on its own terms instead of being killed mid-write.
+
+### Modules
+
+```mermaid
+flowchart TD
+    HJ["hooks/askq.js<br/>server, routes, decision"]
+    ME["lib/metrics.js<br/>tag parsing, units, bar widths"]
+    RE["lib/render.js<br/>page shell, cards, styles"]
+    CH["lib/charts.js<br/>the three forms, form selection"]
+    MD["lib/md.js<br/>briefing markdown subset"]
+    PS["lib/page-script.js<br/>the browser script"]
+    ES["lib/esc.js<br/>HTML escaping"]
+    LA["lib/launch.js<br/>launcher order and spawn"]
+    VS["lib/vscode.js<br/>stub file + settings"]
+    VE["vendor/mermaid.min.js<br/>served on demand"]
+
+    HJ --> ME
+    HJ --> RE
+    HJ --> LA
+    HJ -.->|"GET /mermaid.min.js"| VE
+    RE --> ME
+    RE --> CH
+    RE --> MD
+    RE --> PS
+    RE --> ES
+    CH --> ME
+    CH --> ES
+    MD --> ES
+    LA --> VS
+```
+
+Markup has three owners: `render.js` the page shell and the cards, `charts.js`
+chart bodies, `md.js` briefing bodies. All three escape through the one
+`esc.js`, which is its own module because `charts.js` and `render.js` both need
+it and neither may require the other. Option labels and briefings are
+model-generated and reach a browser, so everything interpolated into HTML goes
+through it. `page-script.js` is not a fourth owner — it emits the browser
+script, not markup.
+
+### Reading the metrics
+
+```mermaid
+flowchart LR
+    RAW["option description"] --> SB["splitBrief<br/>on the brief sentinel"]
+    SB --> BRIEF["briefing markdown"]
+    SB --> REST["remainder"]
+    REST --> PM["parseMetrics<br/>tag anchored at end"]
+    PM --> CLEAN["clean description"]
+    PM --> CHART["chart key<br/>first declaration wins"]
+    PM --> METRICS["metrics"]
+    METRICS --> RD["resolveDimensions<br/>per key, across options"]
+    RD --> SC["scalesFor<br/>per-key maxima"]
+    SC --> BP["barPercent"]
+```
+
+`splitBrief` runs first, so a briefing ending in a code sample like
+`{ retries: 3 }` is not read as the metric tag and lost. `resolveDimensions`
+scans every option's value under one key before scaling: `m` is minutes in a
+duration and millions in a count, so `{stars:2m}` beside `{stars:500k}` reads
+as millions, and without that scan it would draw a bar 240x too long.
+
+The metric tag is the only way data reaches a chart. Every renderer takes
+`[{label, metrics}]` and nothing else, so a `chart:` fence in a briefing would
+need no renderer changes — but a tag is bound to the choice, and a fence would
+make the page a chart of data rather than a comparison of options.
+
 ## The metric tag
 
 End an option's description with `{key: value, ...}` and the page draws a
@@ -195,118 +307,6 @@ Override it entirely:
 ```sh
 export CC_VISUALQ_OPEN="firefox --private-window"
 ```
-
-## How it works
-
-A `PreToolUse` hook on `AskUserQuestion` serves the options as an HTML
-comparison over loopback, blocks until a card is clicked, and answers the tool
-directly. Every path that isn't an explicit click emits nothing, which renders
-no decision and lets the terminal dialog ask unchanged.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant CC as Claude Code
-    participant H as hooks/askq.js
-    participant R as lib/render.js
-    participant L as lib/launch.js
-    participant B as embedded browser
-
-    Note over CC: SessionStart injected askq-rule.md,<br/>so options carry metric tags and briefings
-    CC->>H: PreToolUse AskUserQuestion, tool_input on stdin
-    H->>H: stripTags: split briefing, parse metric tag
-    alt no metric tag and no briefing
-        H-->>CC: exit 0, no output
-        Note over CC: terminal dialog asks unchanged
-    else something to draw
-        H->>H: mint nonce
-        H->>R: renderPage
-        R-->>H: HTML
-        H->>H: listen 127.0.0.1:0
-        H->>L: openUrl
-        alt no launcher succeeded
-            H-->>CC: exit 0, no output
-        else launched
-            B->>H: GET / with nonce
-            Note over H: arrived = true
-            B->>H: GET /ping every 3s
-            B->>H: POST /answer with nonce, picked, other, notes
-            H->>H: timing-safe nonce compare
-            H->>H: filter labels against the tool's own set
-            H-->>CC: allow + updatedInput.answers
-        end
-    end
-```
-
-Three ways the hook stops waiting without an answer: `ARRIVE_MS` 10s with
-nothing fetching the page, `WAIT_MS` 240s with nothing posting, or a rejected
-POST giving up. `WAIT_MS` stays below the hook entry's `timeout: 300` so the
-process exits on its own terms instead of being killed mid-write.
-
-### Modules
-
-```mermaid
-flowchart TD
-    HJ["hooks/askq.js<br/>server, routes, decision"]
-    ME["lib/metrics.js<br/>tag parsing, units, bar widths"]
-    RE["lib/render.js<br/>page shell, cards, styles"]
-    CH["lib/charts.js<br/>the three forms, form selection"]
-    MD["lib/md.js<br/>briefing markdown subset"]
-    PS["lib/page-script.js<br/>the browser script"]
-    ES["lib/esc.js<br/>HTML escaping"]
-    LA["lib/launch.js<br/>launcher order and spawn"]
-    VS["lib/vscode.js<br/>stub file + settings"]
-    VE["vendor/mermaid.min.js<br/>served on demand"]
-
-    HJ --> ME
-    HJ --> RE
-    HJ --> LA
-    HJ -.->|"GET /mermaid.min.js"| VE
-    RE --> ME
-    RE --> CH
-    RE --> MD
-    RE --> PS
-    RE --> ES
-    CH --> ME
-    CH --> ES
-    MD --> ES
-    LA --> VS
-```
-
-Markup has three owners: `render.js` the page shell and the cards, `charts.js`
-chart bodies, `md.js` briefing bodies. All three escape through the one
-`esc.js`, which is its own module because `charts.js` and `render.js` both need
-it and neither may require the other. Option labels and briefings are
-model-generated and reach a browser, so everything interpolated into HTML goes
-through it. `page-script.js` is not a fourth owner — it emits the browser
-script, not markup.
-
-### Reading the metrics
-
-```mermaid
-flowchart LR
-    RAW["option description"] --> SB["splitBrief<br/>on the brief sentinel"]
-    SB --> BRIEF["briefing markdown"]
-    SB --> REST["remainder"]
-    REST --> PM["parseMetrics<br/>tag anchored at end"]
-    PM --> CLEAN["clean description"]
-    PM --> CHART["chart key<br/>first declaration wins"]
-    PM --> METRICS["metrics"]
-    METRICS --> RD["resolveDimensions<br/>per key, across options"]
-    RD --> SC["scalesFor<br/>per-key maxima"]
-    SC --> BP["barPercent"]
-```
-
-`splitBrief` runs first, so a briefing ending in a code sample like
-`{ retries: 3 }` is not read as the metric tag and lost. `resolveDimensions`
-scans every option's value under one key before scaling: `m` is minutes in a
-duration and millions in a count, so `{stars:2m}` beside `{stars:500k}` reads
-as millions, and without that scan it would draw a bar 240x too long.
-
-The metric tag is the only way data reaches a chart. Every renderer takes
-`[{label, metrics}]` and nothing else, so a `chart:` fence in a briefing would
-need no renderer changes — but a tag is bound to the choice, and a fence would
-make the page a chart of data rather than a comparison of options.
 
 ## Tests
 
