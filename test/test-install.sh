@@ -120,5 +120,26 @@ grep -q 'askq-rule.md' "$REPO/scripts/dev-hooks.js" \
   && ok "dev-install registers the rule too" \
   || bad "dev-install" "rule missing from scripts/dev-hooks.js"
 
+echo "5. the vendored bundle travels with HEAD"
+# The plugin cache is a file copy, never an `npm install`, so a bundle that is
+# not committed is a bundle that is not there at runtime. $REPO is the working
+# tree, where an uncommitted file would pass — so this reads the clone, which
+# is the only copy that reflects what an install would actually receive.
+if ! clone "$WORK/vendored" >/dev/null 2>&1; then
+  bad "clone for vendor case" "git clone failed"
+else
+  bundle="$WORK/vendored/vendor/mermaid.min.js"
+  if [ ! -s "$bundle" ]; then
+    bad "vendor bundle" "absent from HEAD; an install would 404 the diagram"
+  else
+    ok "vendor/mermaid.min.js is committed"
+    if [ "$(wc -c <"$bundle" | tr -d ' ')" = 3572296 ]; then
+      ok "committed byte for byte"
+    else
+      bad "vendor bundle" "size differs from HEAD"
+    fi
+  fi
+fi
+
 echo
 [ "$fail" = 0 ] && echo "PASS" || { echo "FAILURES"; exit 1; }

@@ -7,7 +7,7 @@ const { esc } = require('./esc.js');
 const { parseMetrics, splitBrief, scalesFor, barPercent } = require('./metrics.js');
 const { pickForm, renderChart } = require('./charts.js');
 const { renderMd } = require('./md.js');
-const { pageScript } = require('./page-script.js');
+const { pageScript, mermaidScript } = require('./page-script.js');
 
 const STYLES = `
   /* --ok is the accent, not a green: selection means chosen, not successful,
@@ -71,7 +71,6 @@ const STYLES = `
          color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent);
          vertical-align:.08em; }
   .card p { margin:0 0 .85rem; color:var(--mut); font-size:.875rem; }
-  .none { font-style:italic; opacity:.65; margin:0; }
   .metric { display:grid; grid-template-columns:minmax(4rem,auto) 1fr minmax(2.5rem,auto);
             align-items:center; gap:.6rem; margin-top:.45rem; font-size:.8rem; }
   .k { color:var(--mut); text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -120,8 +119,16 @@ const STYLES = `
           transition:opacity var(--mid); }
   table.matrix tbody tr:hover .fill { opacity:.34; }
   .cv { position:relative; }
-  .chart svg { display:block; width:100%; height:auto; max-height:22rem; }
+  /* The cap bounds the drawing, not the viewBox: the scale is
+     min(width/640, cap/360) and the cap always wins, so this is the radar's
+     radius and the scatter's plot area. */
+  .chart svg { display:block; width:100%; height:auto; max-height:28rem; }
   .axis { stroke:var(--line); stroke-width:1.5; }
+  /* --line is already the one-shade-off-surface step, so a hairline in it is
+     recessive without dimming. Radar rings are polygons: fill:none is what
+     keeps them from painting over the data behind them. */
+  .gridline { stroke:var(--line); stroke-width:1; fill:none; }
+  .atick { fill:var(--mut); font-size:10px; font-variant-numeric:tabular-nums; }
   .alabel { fill:var(--mut); font-size:12px; }
   .plabel { fill:var(--fg); font-size:12px; font-weight:600; }
   /* Radar vertex values. Text wears a text token, never the series color:
@@ -201,6 +208,19 @@ const STYLES = `
   /* The fill keeps its inline width; scaleX from the left edge is the growth. */
   .track i { transform-origin:left;
              animation:grow .45s var(--ease) .1s backwards; }
+  /* No reserved height: the block already holds its own source, so it occupies
+     space before mermaid runs and a floor would only pad the fallback. The
+     reduced-motion reset below covers what mermaid injects — it wears
+     !important, which beats mermaid's own stylesheet whatever the order. */
+  .mermaid { margin:0 0 .8rem; display:grid; place-items:center; }
+  .mermaid svg { max-width:100%; height:auto; }
+  /* Until mermaid claims it, the block is its own source: shown as code so a
+     diagram that never renders — bad syntax, missing bundle, blocked script —
+     is still readable. */
+  .mermaid:not([data-processed]) { display:block; white-space:pre-wrap;
+     font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem;
+     padding:.7rem .85rem; border-radius:7px;
+     background:color-mix(in srgb, var(--fg) 5%, transparent); }
   @media (prefers-reduced-motion:reduce) {
     html { scroll-behavior:auto; }
     *, *::before, *::after { animation:none !important; transition:none !important; }
@@ -266,7 +286,7 @@ function renderQuestion(q, qi) {
   let form = 'bars';
   let chart = '';
   try {
-    const picked = pickForm(requested, options);
+    const picked = pickForm(requested, options, scale);
     chart = renderChart(picked.name, options, scale, picked.shape);
     form = picked.name;
   } catch {
@@ -274,9 +294,9 @@ function renderQuestion(q, qi) {
     chart = '';
   }
 
-  // A card with a briefing says enough without also reporting what it lacks.
-  const emptyBody = (o) => (o.brief ? '' : '<p class="none">no metrics supplied</p>');
-  const bodyFor = (o) => (form === 'bars' ? barRows(o, scale) || emptyBody(o) : '');
+  // An option with no metrics renders no metric block. Naming the absence
+  // costs a line and tells the reader nothing the empty card doesn't.
+  const bodyFor = (o) => (form === 'bars' ? barRows(o, scale) : '');
   const cards = options
     .map((o, oi) => card(o, { qi, oi, multi, body: bodyFor(o) }))
     .join('');
@@ -313,10 +333,12 @@ const FOOTER = `<footer><span id="status">Pick an option.</span>
 
 function renderPage(questions, { nonce = '', waitMs = 0 } = {}) {
   const body = questions.map((q, qi) => renderQuestion(q, qi)).join('');
+  // One substring test beats threading a flag back out of renderMd through two callers.
+  const mermaid = body.includes('class="mermaid"') ? mermaidScript() : '';
   return `<!doctype html><html><head><meta charset="utf-8">
 <title>Answer the question</title>
 <style>${STYLES}</style></head><body><main>${body}</main>
-${FOOTER}${pageScript(nonce, questions.length, waitMs)}
+${FOOTER}${pageScript(nonce, questions.length, waitMs)}${mermaid}
 </body></html>`;
 }
 

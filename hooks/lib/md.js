@@ -1,7 +1,7 @@
 'use strict';
 
 // The briefing subset: paragraphs, one level of lists, pipe tables, fenced
-// code, and inline emphasis. Only tags chosen here reach the DOM — esc() runs
+// code, a mermaid diagram, and inline emphasis. Only tags chosen here reach the DOM — esc() runs
 // before inline replacement, so a model-written <b> arrives as &lt;b&gt; and
 // the second pass cannot revive it. Reversing that order would pass an
 // authored tag through intact.
@@ -45,13 +45,22 @@ const isTable = (lines, i) =>
 // the markup plus the next cursor, or null when it does not apply. Every reader
 // that matches must advance the cursor, or the scan would not terminate.
 
+// A mermaid block is escaped like every other fence. The page reads it with
+// textContent, which decodes the entities back to the authored source, so
+// mermaid sees `-->` while the markup only ever held `--&gt;`. Nothing here
+// relaxes the rule that only tags chosen in this file reach the DOM.
 function readFence(lines, i) {
   if (!FENCE.test(lines[i])) return null;
+  const lang = lines[i].replace(FENCE, '').trim().toLowerCase();
   const body = [];
   let j = i + 1;
   for (; j < lines.length && !FENCE.test(lines[j]); j++) body.push(lines[j]);
   // j is the closer, or the end of input when the fence was never closed.
-  return { html: `<pre class="md-pre"><code>${esc(body.join('\n'))}</code></pre>`, next: j + 1 };
+  const code = esc(body.join('\n'));
+  const html = lang === 'mermaid'
+    ? `<div class="mermaid">${code}</div>`
+    : `<pre class="md-pre"><code>${code}</code></pre>`;
+  return { html, next: j + 1 };
 }
 
 function readTable(lines, i) {

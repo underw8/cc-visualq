@@ -103,6 +103,29 @@ console.log('5. form selection and degradation');
 
   eq('shape counts distinct keys', shapeOf(three).metrics, 3);
   eq('shape counts axis-capable keys', shapeOf(three).completeNumeric.length, 3);
+
+  // An axis-per-key form is gated on the shortest bar it would draw: a vertex
+  // at 2% of the radius sits where a missing value sits. The gate needs the
+  // scale, and opens without one so a caller that omits it degrades to the
+  // old behaviour rather than losing every chart.
+  const wide = prep([
+    { label: 'A', description: 'a {size:3.4mb, setup:2h, risk:low}' },
+    { label: 'B', description: 'b {size:170mb, setup:4h, risk:critical}' },
+  ]);
+  eq('radar refuses a 50x spread', pickForm('radar', wide, scaleOf(wide)).name, 'matrix');
+  eq('radar keeps it without a scale', pickForm('radar', wide).name, 'radar');
+
+  const near = prep([
+    { label: 'A', description: 'a {size:60mb, setup:2h, risk:low}' },
+    { label: 'B', description: 'b {size:170mb, setup:4h, risk:critical}' },
+  ]);
+  eq('radar keeps a 3x spread', pickForm('radar', near, scaleOf(near)).name, 'radar');
+
+  const wide2 = prep([
+    { label: 'A', description: 'a {size:3.4mb, setup:2h}' },
+    { label: 'B', description: 'b {size:170mb, setup:4h}' },
+  ]);
+  eq('scatter refuses it too', pickForm('scatter', wide2, scaleOf(wide2)).name, 'grouped');
 }
 
 console.log('6. grouped renderer');
@@ -187,6 +210,26 @@ console.log('10. scatter renderer');
   eq('one point per option', (html.match(/<circle /g) || []).length, 2);
   has('points carry a series class', html, '<circle class="s0"');
   eq('no non-finite coordinate reaches an attribute', /="(NaN|Infinity|-Infinity)"/.test(html), false);
+
+  // Three references per axis, and the value each axis tops out at. Both axes
+  // are normalized to their own key's largest value, so naming that value is
+  // the whole of the scale — every other position is a fraction of it.
+  eq('three gridlines per axis', (html.match(/class="gridline"/g) || []).length, 6);
+  eq('one tick per axis', (html.match(/class="atick"/g) || []).length, 2);
+  has('the x tick is the largest cost, as authored', html, '>$20<');
+  has('the y tick is the largest latency, as authored', html, '>180ms<');
+  // An ordinal axis ranks by its word's position in the vocabulary, so the tick
+  // has to name the highest word rather than the largest number.
+  const ord = prep([
+    { label: 'A', description: 'a {chart: scatter, cost:$20, risk:low}' },
+    { label: 'B', description: 'b {cost:$5, risk:critical}' },
+  ]);
+  const o = pickForm('scatter', ord, scaleOf(ord));
+  has('an ordinal axis ticks its highest word',
+    renderChart(o.name, ord, scaleOf(ord), o.shape), '>critical<');
+  // Data over grid, never under it.
+  eq('the grid is drawn first',
+    html.indexOf('class="gridline"') < html.indexOf('<circle '), true);
 }
 
 console.log('10b. scatter degrades when an option is missing an axis');
@@ -223,7 +266,8 @@ console.log('12. radar renderer');
   const { name, shape } = pickForm('radar', options);
   eq('form is radar', name, 'radar');
   const html = renderChart(name, options, scaleOf(options), shape);
-  eq('one polygon per option', (html.match(/<polygon /g) || []).length, 2);
+  // Rings are polygons too, so the data polygons are counted by their class.
+  eq('one data polygon per option', (html.match(/class="poly /g) || []).length, 2);
   eq('one axis line per numeric key', (html.match(/<line class="axis"/g) || []).length, 3);
   has('axis labelled', html, '>cost<');
   has('polygon carries a series class', html, 'class="poly s1"');
@@ -232,6 +276,36 @@ console.log('12. radar renderer');
   // Three axes, two options: six "x,y" pairs across the two polygons.
   eq('three points per polygon',
     (html.match(/points="[^"]*"/g) || []).every((p) => p.split(' ').length === 3), true);
+
+  // Four rings, and no number on any of them: each axis is normalized to its
+  // own key's largest value, so one radius stands for a different quantity per
+  // spoke and a radial tick would be true of at most one. The vertices carry
+  // the values instead.
+  eq('four concentric rings', (html.match(/class="gridline"/g) || []).length, 4);
+  eq('the rings carry no ticks', (html.match(/class="atick"/g) || []).length, 0);
+  eq('the rings are drawn first',
+    html.indexOf('class="gridline"') < html.indexOf('class="poly '), true);
+
+  // A key name anchored in the middle reaches back along its own axis into the
+  // value label sitting just past r. Anchoring it outward is what keeps twenty
+  // labels apart on a four-option, four-axis chart — the most the tool can
+  // produce. Three axes point up, down-right and down-left.
+  // Scoped to the key names: the vertex value labels are centred too.
+  const anchors = (src, kind) =>
+    (src.match(new RegExp(`class="alabel"[^>]*text-anchor="${kind}"`, 'g')) || []).length;
+  eq('a near-vertical axis keeps the middle anchor', anchors(html, 'middle'), 1);
+  eq('a rightward axis anchors at the start', anchors(html, 'start'), 1);
+  eq('a leftward axis anchors at the end', anchors(html, 'end'), 1);
+
+  const four = prep([
+    { label: 'A', description: 'a {chart: radar, w:1, x:2, y:3, z:low}' },
+    { label: 'B', description: 'b {w:2, x:1, y:4, z:high}' },
+  ]);
+  const f = pickForm('radar', four);
+  const fhtml = renderChart(f.name, four, scaleOf(four), f.shape);
+  // Four axes point up, right, down and left: two vertical, one each side.
+  eq('four axes split two vertical and one per side',
+    ['middle', 'start', 'end'].map((k) => anchors(fhtml, k)).join(','), '2,1,1');
 }
 
 console.log('13. radar degrades when an option is missing an axis');
@@ -307,18 +381,13 @@ console.log('15. briefing without metrics');
       { label: 'B', description: 'Second.' },
     ],
   }]);
-  // Scoped to A's own card: suppression is per-card (the brief attaches to
-  // one option), so B — unbriefed, in the same question — must still report.
   const cardA = page.slice(page.indexOf('<h3>A</h3>'), page.indexOf('<h3>B</h3>'));
   has('briefed card renders its prose', cardA, '<li>only prose</li>');
-  lacks('briefed card suppresses its own no-metrics line', cardA,
-    '<p class="none">no metrics supplied</p>');
-  has('unbriefed sibling still reports missing metrics', page,
-    '<p class="none">no metrics supplied</p>');
+  // Absent metrics are absent markup, briefed or not: the card is the summary.
+  lacks('no missing-metrics notice anywhere', page, 'class="none"');
 
   const neither = renderPage(Q([{ label: 'A', description: 'First.' }]));
-  has('an unbriefed card still says so', neither,
-    '<p class="none">no metrics supplied</p>');
+  lacks('an unbriefed card stays silent about it', neither, 'class="none"');
 }
 
 console.log('16. briefing escaping through renderPage');
@@ -369,6 +438,79 @@ console.log('19. motion and hover');
     '*, *::before, *::after { animation:none !important; transition:none !important; }');
   has('reduced motion also stops smooth scrolling', page, 'scroll-behavior:auto');
   lacks('selecting a card shifts no text', page, 'padding-left:calc(1.1rem - 2px)');
+}
+
+console.log('20. mermaid loads only when a diagram is on the page');
+{
+  const withDiagram = (brief) => renderPage([{
+    question: 'Which?\n<!--brief-->\n' + brief,
+    header: 'H',
+    options: [{ label: 'A', description: 'a {cost:$1}' }],
+  }]);
+
+  const diagram = withDiagram('```mermaid\nflowchart LR\n  A[x] --> B[y]\n```');
+  has('the bundle is requested', diagram, '<script src="/mermaid.min.js">');
+  // suppressErrors hides the exception, not the error card, so syntax is
+  // checked with parse() and only what parses is handed to run().
+  has('syntax is checked first', diagram, 'mermaid.parse(');
+  has('run skips what failed to parse', diagram,
+    "querySelector: '.mermaid:not([data-bad])'");
+  has('errors are suppressed', diagram, 'suppressErrors: true');
+  has('the sanitizer is on', diagram, "securityLevel: 'strict'");
+  has('no html labels', diagram, 'htmlLabels: false');
+  // 3.4MB is too much to fetch for a question that has no diagram in it.
+  lacks('prose alone loads nothing', withDiagram('just prose'), 'mermaid.min.js');
+  lacks('another language loads nothing',
+    withDiagram('```js\nconst a = 1;\n```'), 'mermaid.min.js');
+  lacks('no diagram, no init', withDiagram('just prose'), 'mermaid.initialize');
+
+  // The block is readable before mermaid claims it, so a diagram that never
+  // renders leaves its source on screen rather than an empty box.
+  has('unprocessed blocks show their source', diagram,
+    '.mermaid:not([data-processed])');
+}
+
+console.log('21. the vendored bundle is intact');
+{
+  const crypto = require('node:crypto');
+  const fs = require('node:fs');
+  const bundle = fs.readFileSync(require('node:path').join(__dirname, '..', 'vendor', 'mermaid.min.js'));
+  eq('byte count matches vendor/README.md', bundle.length, 3572296);
+  eq('sha256 matches vendor/README.md',
+    crypto.createHash('sha256').update(bundle).digest('hex'),
+    '8d8e0eec56d3a83b4b3c87f42050845546dee93ebe1875d2117c12e6947c0cb3');
+  // A build that lazy-loads its diagram registry would 404 against the hook's
+  // server and fail with no message, so one file has to be the whole library.
+  eq('resolves no dynamic import', bundle.toString('latin1').split('import(').length - 1, 0);
+  has('assigns the global a plain script tag can reach',
+    bundle.toString('latin1').slice(-200), 'globalThis["mermaid"]');
+}
+
+console.log('22. no SVG mark class doubles as a DOM class');
+{
+  // Both owners write into one stylesheet, so a name used in charts.js and in
+  // render.js gets both rule bodies. It survived twice by luck — stroke is
+  // inert on a div and display:grid is inert on a polygon — and would stop
+  // surviving the first time either rule grew a property the other shares.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', 'hooks', 'lib', f), 'utf8');
+  // A class list can end in an interpolated slot (`class="poly \${seriesClass(i)}"`),
+  // so tokens carrying template syntax are dropped rather than the whole list.
+  const names = (src, re) => new Set([...src.matchAll(re)]
+    .flatMap((m) => m[m.length - 1].trim().split(/\s+/))
+    .filter((c) => c && !/[${}]/.test(c)));
+  // Only classes on SVG geometry and text: HTML classes are shared on purpose
+  // (`grouped` reuses the card's bar markup), and the series slots s0-s3 are
+  // shared by design — one --c property, read by every mark.
+  const marks = names(read('charts.js'),
+    /<(?:line|polygon|circle|text|path)[^>]*class="([^"]+)"/g);
+  const dom = names(read('render.js'), /class="([^"]+)"/g);
+  for (const slot of ['s0', 's1', 's2', 's3']) marks.delete(slot);
+  eq('no SVG mark class is also a DOM class',
+    [...marks].filter((c) => dom.has(c)).join(',') || 'none', 'none');
+  eq('the marks are the ones we expect', [...marks].sort().join(','),
+    'alabel,atick,axis,gridline,plabel,poly,vlabel');
 }
 
 console.log(fail ? 'FAIL' : 'PASS');

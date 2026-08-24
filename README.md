@@ -49,14 +49,20 @@ The reserved `chart` key picks the form, declared on the first option:
 | `bars` (default) | one bar per metric, inside each option card | nothing |
 | `grouped` | one block per metric, options side by side | ≥1 metric |
 | `matrix` | options as rows, metrics as columns, exact values | ≥1 metric |
-| `scatter` | two metrics as axes, options as points | ≥2 numeric metrics every option has a value for |
-| `radar` | one polygon per option across all axes | ≥3 numeric metrics every option has a value for |
+| `scatter` | two metrics as axes, options as points | ≥2 numeric metrics every option has a value for, none under 10% of its axis |
+| `radar` | one polygon per option across all axes | ≥3 numeric metrics every option has a value for, none under 10% of its axis |
 
 Radar and scatter both need every option to carry every axis they draw. A
 vertex at the centre, or a missing point, would read as the lowest value
 rather than as absent data, so one option missing one axis degrades the whole
 chart rather than misreporting it. `bars`, `grouped` and `matrix` say it
 plainly instead: no row, or an em dash.
+
+They also need their values within reach of one another. One option fifty
+times another puts the small one within a couple of pixels of the origin —
+where an absent value sits — so the same refusal applies. Compressing the axis
+to fit both would understate the gap, so the form steps back to a table where
+both numbers are printed.
 
 A form whose data can't carry it degrades quietly rather than drawing a broken
 axis: radar → matrix, scatter → grouped, grouped and matrix → bars.
@@ -97,8 +103,9 @@ the page and stripped from the terminal dialog:
     |---|---|---|
     | render | 88ms | 710ms |
 
-A question briefing opens with a TL;DR — where the work got to and what this
-decision settles — written for someone who has not read the conversation. Its
+A question briefing opens on the problem — what is being decided, why it comes
+up now, what goes wrong if it goes the wrong way — written for someone who has
+read none of the conversation. Its
 first paragraph is set larger than the detail beneath it. On a question it draws
 above the comparison; on an option's description it draws inside that card,
 below the bars. Both are page-only — the dialog shows
@@ -108,9 +115,17 @@ The briefing goes last, after the metric tag. A briefing ending in braces would
 otherwise be read as the tag.
 
 Supported: paragraphs, one level of `-` or `1.` lists, pipe tables with a
-separator row, fenced code, `**strong**`, `*em*`, `` `code` ``, and headings.
-Links and images render as literal text — nothing authored becomes a tag, and
-the page never navigates away while a question is waiting.
+separator row, fenced code, a ```` ```mermaid ```` diagram, `**strong**`,
+`*em*`, `` `code` ``, and headings. Links and images render as literal text —
+nothing authored becomes a tag, and the page never navigates away while a
+question is waiting.
+
+A ```` ```mermaid ```` fence is drawn as a diagram, themed off the page's own
+colors so it follows light and dark. The library is committed under `vendor/`
+and served from the hook, so nothing is fetched from a CDN and no part of the
+diagram leaves the machine. It loads only for a page that actually holds one.
+A diagram mermaid cannot parse renders as its own source rather than an error
+card, so a mistyped fence costs a code block and nothing else.
 
 A question carrying only a briefing and no metrics still opens a page.
 

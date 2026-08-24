@@ -28,13 +28,18 @@ const FORMS = {
   // Radar shares scatter's requirement for the same reason: an axis an option
   // has no value for would plot at the centre, which reads as a genuine
   // minimum rather than a gap. Degrading to matrix shows the gap as an em dash.
-  scatter: { fits: (s) => s.completeNumeric.length >= 2, fallback: 'grouped', render: scatter },
-  radar:   { fits: (s) => s.completeNumeric.length >= 3, fallback: 'matrix', render: radar },
+  scatter: { fits: (s) => s.completeNumeric.length >= 2 && s.axesReadable, fallback: 'grouped', render: scatter },
+  radar:   { fits: (s) => s.completeNumeric.length >= 3 && s.axesReadable, fallback: 'matrix', render: radar },
 };
+
+// A mark below this share of its axis sits where an absent value sits, so the
+// axis stops separating "small" from "missing". Compressing the scale to fit
+// both would understate the gap, so the form degrades to a table instead.
+const MIN_AXIS_PCT = 10;
 
 // Metric keys in declaration order, and which of them can hold an axis.
 // Ordinals have a finite rank, so they count as numeric.
-function shapeOf(options) {
+function shapeOf(options, scale) {
   const keys = [];
   const numericKeys = [];
   for (const o of options) {
@@ -47,11 +52,20 @@ function shapeOf(options) {
   // way to draw an option that lacks one, so this is the only key set they use.
   const completeNumeric = numericKeys.filter((k) =>
     options.every((o) => o.metrics.some((m) => m.key === k && Number.isFinite(m.value))));
-  return { keys, completeNumeric, metrics: keys.length };
+  return {
+    keys,
+    completeNumeric,
+    metrics: keys.length,
+    // Without a scale nothing is measurable, so the gate opens.
+    axesReadable: !scale || completeNumeric.every((k) => options.every((o) => {
+      const m = valueOf(o, k);
+      return !m || barPercent(m, scale) >= MIN_AXIS_PCT;
+    })),
+  };
 }
 
-function pickForm(requested, options) {
-  const shape = shapeOf(options);
+function pickForm(requested, options, scale) {
+  const shape = shapeOf(options, scale);
   const req = String(requested || '').toLowerCase();
   let name = Object.hasOwn(FORMS, req) ? req : 'bars';
   // Chains are two deep and end at `bars`; the bound only guards a
@@ -115,6 +129,18 @@ function num(n, lo, hi) {
   return Math.min(hi, Math.max(lo, Math.round(v * 100) / 100));
 }
 
+// The value that tops out this key's axis, as authored: `3.5mb`, not the
+// 3670016 it normalizes to. Every metric under one key shares a dimension, so
+// the largest magnitude is the largest bar and no scale is needed to rank them.
+function peakRaw(options, key) {
+  let best = null;
+  for (const o of options) {
+    const m = valueOf(o, key);
+    if (m && (!best || Math.abs(m.value) > Math.abs(best.value))) best = m;
+  }
+  return best ? best.raw : '';
+}
+
 // Axes plot magnitude, not goodness: whether a large cost should sit far right
 // is unknowable unless the model declares polarity.
 function scatter(options, scale, shape) {
@@ -131,10 +157,29 @@ function scatter(options, scale, shape) {
     })
     .join('');
 
+  // Drawn before the marks so data sits on top of the grid, never under it.
+  const grid = [0.25, 0.5, 0.75]
+    .map((f) => {
+      const x = num(PAD + f * (W - PAD * 2), PAD, W - PAD);
+      const y = num(H - PAD - f * (H - PAD * 2), PAD, H - PAD);
+      return `<line class="gridline" x1="${x}" y1="${PAD}" x2="${x}" y2="${H - PAD}"/>
+        <line class="gridline" x1="${PAD}" y1="${y}" x2="${W - PAD}" y2="${y}"/>`;
+    })
+    .join('');
+
+  // One tick per axis, at the end. Both axes are normalized to their own key's
+  // largest value, so naming that value is the whole of the scale: every other
+  // position on the axis is a fraction of the number printed here.
+  const tx = esc(peakRaw(options, kx));
+  const ty = esc(peakRaw(options, ky));
+
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img"
       aria-label="${esc(kx)} plotted against ${esc(ky)}">
+    ${grid}
     <line class="axis" x1="${PAD}" y1="${H - PAD}" x2="${W - PAD}" y2="${H - PAD}"/>
     <line class="axis" x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H - PAD}"/>
+    <text class="atick" x="${W - PAD}" y="${H - PAD + 16}" text-anchor="end">${tx}</text>
+    <text class="atick" x="${PAD - 6}" y="${PAD + 4}" text-anchor="end">${ty}</text>
     <text class="alabel" x="${W / 2}" y="${H - 12}" text-anchor="middle">${esc(kx)}</text>
     <text class="alabel" x="14" y="${H / 2}" text-anchor="middle"
           transform="rotate(-90 14 ${H / 2})">${esc(ky)}</text>
@@ -155,12 +200,23 @@ function radar(options, scale, shape) {
     };
   };
 
+  // Unlabelled on purpose: per-key normalization means one radius stands for a
+  // different quantity on each spoke. The vertices carry the values.
+  const rings = [0.25, 0.5, 0.75, 1]
+    .map((f) => `<polygon class="gridline" points="${
+      keys.map((k, i) => { const p = at(i, f); return `${p.x},${p.y}`; }).join(' ')}"/>`)
+    .join('');
+
   const axes = keys
     .map((k, i) => {
       const end = at(i, 1);
-      const label = at(i, 1.14);
+      // Clear of a value label sitting just past r, and anchored outward so the
+      // name grows away from it rather than back into it.
+      const label = at(i, 1.22);
+      const cos = Math.cos(angleAt(i));
+      const anchor = Math.abs(cos) < 0.25 ? 'middle' : (cos > 0 ? 'start' : 'end');
       return `<line class="axis" x1="${cx}" y1="${cy}" x2="${end.x}" y2="${end.y}"/>
-        <text class="alabel" x="${label.x}" y="${label.y}" text-anchor="middle">${esc(k)}</text>`;
+        <text class="alabel" x="${label.x}" y="${label.y}" text-anchor="${anchor}">${esc(k)}</text>`;
     })
     .join('');
 
@@ -202,7 +258,7 @@ function radar(options, scale, shape) {
     .join('');
 
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="option profiles across ${keys.length} dimensions">${axes}${polys}${values}</svg>
+      aria-label="option profiles across ${keys.length} dimensions">${rings}${axes}${polys}${values}</svg>
     <div class="legend">${legend}</div></div>`;
 }
 
