@@ -134,7 +134,9 @@ nothing authored becomes a tag, and the page never navigates away while a
 question is waiting.
 
 A ```` ```mermaid ```` fence is drawn as a diagram, themed off the page's own
-colors so it follows light and dark. The library is committed under `vendor/`
+colors so it follows light and dark. The session rule tells Claude to reach for
+one whenever the explanation is a shape — a flow, a sequence, a dependency —
+rather than describing it in prose. The library is committed under `vendor/`
 and served from the hook, so nothing is fetched from a CDN and no part of the
 diagram leaves the machine. It loads only for a page that actually holds one.
 A diagram mermaid cannot parse renders as its own source rather than an error

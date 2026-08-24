@@ -49,8 +49,13 @@ it only when the labels alone settle the choice.
   `|---|` separator row, fenced code, a ```` ```mermaid ```` fence, `**strong**`,
   `*em*`, `` `code` ``, headings `#` to `####`. Links and images render as
   literal text.
-- A diagram only when the thing being decided *is* a shape — a flow, a
-  dependency, a sequence. Never a diagram of the options; that is what the
-  comparison above it already draws. Mistyped mermaid renders as its own
-  source, so a diagram you are unsure of costs the reader a code block.
+- Prefer a ```` ```mermaid ```` diagram over prose whenever the explanation is
+  a shape: a flow, a sequence, a dependency, a state machine, where a change
+  lands in an existing system. A diagram carries that in one glance where a
+  paragraph makes the reader rebuild it. Reach for one by default when
+  explaining how something works, and keep the prose for what the diagram
+  cannot say — the constraint, the measurement, the consequence.
+- Never a diagram of the options; that is what the comparison above it already
+  draws. Keep it under ~15 nodes: past that it stops being one glance. Mistyped
+  mermaid renders as its own source, so a diagram costs a code block at worst.
 - A briefing that restates the options is worse than none.
