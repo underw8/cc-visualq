@@ -10,7 +10,7 @@ as an HTML comparison chart in the terminal's embedded browser.
 ## Commands
 
 ```sh
-make test            # all eight suites (./test/run-all.sh)
+make test            # all nine suites (./test/run-all.sh)
 make validate        # claude plugin validate .
 make check           # test + validate
 ```
@@ -80,7 +80,8 @@ hooks/lib/metrics.js             tag parsing and stripping, units, bar widths
 scripts/dev-hooks.js             dev-install registration, merged not written
 vendor/mermaid.min.js            pinned diagram library, served by the hook
 vendor/README.md                 version, hash, and what to re-check on a bump
-test/run-all.sh                  runs all eight suites
+test/run-all.sh                  runs all nine suites
+test/test-load.js                every lib module parses; runs first
 test/test-md.js                  the subset and its escaping
 ```
 
@@ -203,6 +204,17 @@ launcher cannot detect and report. A settings file that cannot survive
 left untouched and the launcher declines. And a crash between writing and
 restoring leaves `.vscode/.askq-restore.json` naming what to put back, which the
 next call restores before doing anything else.
+
+**A backtick anywhere inside `STYLES` or `pageScript`/`mermaidScript` breaks
+the module.** Both are template literals, so a backtick in a *comment* inside
+one closes the string and the file stops parsing. The failure surfaces three
+suites away as `test-askq` reporting `expected "allow" got undefined`, because
+the hook crashed before writing a decision. `test/test-load.js` requires every `lib/`
+module for exactly this reason and runs first, so the broken file and line are
+the first thing reported. It imports nothing at the top: a suite that requires
+the thing it checks dies before it can report on it, which is why the guard is
+its own suite rather than a section of `test-render.js`. Write `color-scheme`, not the backticked form, in any comment
+that lives inside those literals.
 
 **The scheme is a token-level choice, not two blocks.** `prefers-color-scheme`
 cannot be overridden from CSS, so a scheme the reader picks has to arrive

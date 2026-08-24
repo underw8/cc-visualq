@@ -201,7 +201,9 @@ export CC_VISUALQ_OPEN="firefox --private-window"
 ```
 
 No framework, no npm dependencies: `node` and `bash` only, plus the `claude`
-CLI for `test-install.sh`. `make check` runs every suite plus manifest
+CLI for `test-install.sh`. `test-load.js` runs first and only checks that every
+module parses, so a syntax error is reported against its own file rather than as
+a puzzling failure in a later suite. `make check` runs every suite plus manifest
 validation; each `test/test-*` file also runs standalone.
 
 ## License
