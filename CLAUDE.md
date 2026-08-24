@@ -235,6 +235,12 @@ Without that scan `2m` falls to whichever table matches first — minutes — an
 draws a bar 240x too long beside `500k`. Two firm dimensions under one key
 (`4mb` and `2s`) clear the dimension instead, so the raw numbers rank.
 
+**A value may carry a trailing `/period`.** `$12/mo` is the rule's own first
+example, and the unit charset excluded `/`, so it parsed as text and drew no
+bar — the drift this section warns about, in the rule's headline case. The
+period is dropped and the magnitude ranks; a key mixing a rate with a one-off
+is already outside one-dimension-per-key.
+
 **`hooks/askq-rule.md` is the contract for what the tables accept.** The rule
 tells Claude which units and ordinal words to write, `UNITS` and `ORDINALS` in
 `lib/metrics.js` accept that set, and README's value table documents it. A unit

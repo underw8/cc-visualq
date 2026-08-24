@@ -71,6 +71,7 @@ Values are normalized before comparison, so mixed units rank correctly:
 | `4mb`, `12kb`, `1gb` | bytes (binary; `4mb` outranks `12kb`) |
 | `250ms`, `1.5s`, `30m`, `2h` | duration |
 | `$4.2k`, `$1,200`, `1,234,567` | number; currency and separators ignored |
+| `$12/mo`, `120kb/s` | the `/period` is dropped, the magnitude ranks |
 | `2m` stars / `30m` build | millions or minutes, from the other values under that key |
 | `80%` | percent |
 | `low`, `medium`, `high`, `critical` | ordinal scale, drawn proportionally |
