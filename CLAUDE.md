@@ -280,6 +280,24 @@ bar — the drift this section warns about, in the rule's headline case. The
 period is dropped and the magnitude ranks; a key mixing a rate with a one-off
 is already outside one-dimension-per-key.
 
+**A direction is a property of the key, so the arrow comes off before keys are
+compared.** `{size↓: 3kb}` on one option and `{size: 13kb}` on the next has to
+land in one block, which it only does because `DIRECTED` strips the arrow in
+`parseMetrics` and the first arrow seen under a key settles it for the column. A
+key with no arrow is left unranked rather than guessed at — nothing in `3kb`
+says small is good, and inferring it from the unit is wrong the first time
+someone charts throughput. Ties all win: two options at `low` are both best on
+it, and `winnersFor` compares against one extreme rather than sorting.
+
+**A win is three marks and the glyph is the load-bearing one.** The tick in
+`.mark`, the value at full ink, and the fill keeping the accent while the losers
+recede to `.dim` — neutral at 30% of ink, which is a lightness step from the
+accent (1.94:1 light, 2.26:1 dark) rather than a hue away, so the pair survives
+greyscale. The glyph is what carries it where neither reads. An ordinal is never
+dimmed, because its value *is* its pill and the pill's ink is its band. Nothing
+recedes on a question where no key declares a direction, so none of it fires by
+accident.
+
 **`hooks/askq-rule.md` is the contract for what the tables accept.** The rule
 tells Claude which units and ordinal words to write, `UNITS` and `ORDINALS` in
 `lib/metrics.js` accept that set, and README's value table documents it. A unit
@@ -292,10 +310,12 @@ is 4 for that reason, and its modulo is a backstop rather than a real cycle. A
 `fits` predicate that bounds the option count bounds it against something the
 tool cannot produce.
 
-**Series colors flow through one `--c` custom property.** `.s0`–`.s3` assign it;
-every colored mark (`.track i`, `.fill`) reads `var(--c)`. A new mark costs one
-rule, not one per option slot. `.track i` falls
-back to `var(--accent)` because the `bars` form emits no series class.
+**There is no series palette; every bar is the one accent.** Identity comes
+from the row label and the fixed row order that each block repeats, which is
+what a per-option hue was restating. Deleting it also removed the light-mode
+contrast relief the two lightest hues needed (2.06:1 and 2.56:1 on the card) and
+a dark protan pair at ΔE 6.9. Adding a hue back means owning both again, and
+a validator run against both surfaces with `--pairs all`.
 
 **`--accent` is ink at one site and fill at another, so the fill has its own
 ink.** Light enough to read as text on a card is too light for white text on top
@@ -306,14 +326,32 @@ read it too. It is one value rather than a `light-dark()` pair because the
 accent is mid-tone in both schemes (5.05:1 light, 7.50:1 dark) — an accent that
 flipped lightness between schemes would need the pair.
 
-**The series palette is validated, not chosen.** Under the all-pairs rule the
-comparison forms need — `grouped` puts four bars in one block and `matrix` four
-rows in one table, so any pair may be compared — only two four-hue sets clear
-colorblind and normal-vision
-separation on the dark surface — the shipped one is one of them. Editing a
-`--s0`–`--s3` hex by eye reintroduces a pair no reader can separate. Re-run the
-bundled `dataviz` skill's `validate_palette.js` against both surfaces with
-`--pairs all` instead.
+**A chart block caps its track; a card does not.** `.metric` is emitted in both
+places and the middle column is `1fr`, which inside a 64rem `main` leaves the
+bar using under a third of the track and the value a viewport away from the bar
+end. `.chart .metric` overrides the column to `20rem` for that reason; a card is
+narrow enough that `1fr` already keeps the two adjacent.
+
+**An ordinal carries two marks because it is two things.** It is a state, so it
+states its word in a `.pill`; it is a place on a six-step scale, so it keeps a
+`.track.ord` whose gaps are painted *over* the whole track in the surface color.
+Segmenting the fill instead scales the pitch to the fill's own width and every
+row then reads as a different scale. The pill's band comes from `BANDS` in
+`charts.js`, indexed by rank: the vocabulary is itself a severity scale, so
+`critical` is never good news whatever key it sits under and no declared
+direction is needed. A key that wants `low` to read as good news is misusing the
+vocabulary, not hitting a gap.
+
+**`markCell` is the one owner of a metric row's marks.** `charts.js` exports it
+and `barRows` in `render.js` calls it, so a card row and a chart row cannot
+drift apart — the ordinal pill reached the cards for free. It always emits
+exactly two grid children, which is what lets a missing value print an em dash
+without collapsing the row's columns.
+
+**In `matrix` the number is the mark and the bar is a rule beneath it.** Nothing
+is read through a fill, which is what the old absolutely-positioned `.fill` at
+`opacity:.22` did. An ordinal cell drops the rule entirely: a state has no
+length.
 
 **Motion is CSS, in one block, on three tokens.** `--ease`, `--fast` and
 `--mid` are the whole vocabulary: a new hover or transition reuses them rather
@@ -371,8 +409,8 @@ scheme validation against `javascript:`, and a page that can navigate away
 while `askq.js` waits is worse than a briefing without hyperlinks.
 
 **The authoring rule is a four-place contract.** `hooks/askq-rule.md`,
-`UNITS`/`ORDINALS` in `lib/metrics.js`, the subset in `lib/md.js` (including
-the `+`/`-` trade-off run), and README's tables must agree. A block type in `md.js` and not the rule is never authored;
+`UNITS`/`ORDINALS`/`DIRECTED` in `lib/metrics.js`, the subset in `lib/md.js`
+(including the `+`/`-` trade-off run), and README's tables must agree. A block type in `md.js` and not the rule is never authored;
 one in the rule and not `md.js` renders as literal text. Neither errors.
 
 **Mermaid reads `textContent`, which is why the escape stays.** A ```` ```mermaid ````
@@ -447,16 +485,27 @@ after changing the decision shape:
 1. Each form renders as named: `{chart: grouped|matrix}` with enough
    dimensions, and one option carrying no value for a shared key, which must
    print an em dash. A retired name (`{chart: radar}`) must arrive as bars.
-2. Options with no tag: no page, dialog unchanged.
-3. With `askq.js` wired in, clicking a card answers the tool; typing in
+2. An ordinal key draws a pill and a stepped track, and the fill lands on a
+   segment boundary rather than inside one: `low` fills three of six, `critical`
+   all six, `none` exactly one. Check a numeric key beside it draws no pill.
+3. A direction: `{size↓: 3kb}` on the first option and `{size: 13kb}` on the
+   next must land in one block, tick the smaller, dim the larger's value and
+   fill, and print `lower is better` on the heading. Then `{reach↑: high}`
+   against `{reach: none}` — `high` must read green, `none` red, since a
+   declared direction outranks the vocabulary's own severity reading. Two
+   options at the same value tick together. A key with no arrow must tick
+   nothing, dim nothing, and grey no fill. Check the same question as `matrix`,
+   where the tick is on the cell and the arrow on the column head.
+4. Options with no tag: no page, dialog unchanged.
+5. With `askq.js` wired in, clicking a card answers the tool; typing in
    "Something else" answers with that text verbatim; notes arrive alongside
    the answer; "Answer in terminal" dismisses the page and the dialog appears.
    Re-focusing the "Something else" field must not clear what was typed.
-4. On a `multiSelect` question, click a card, click it again to deselect it,
+6. On a `multiSelect` question, click a card, click it again to deselect it,
    then select a third. The sent answer must contain exactly the labels left
    pressed.
-5. Break the hook (`exit 1` at the top). The dialog still answers normally.
-6. A question briefing renders above the chart and an option briefing inside
+7. Break the hook (`exit 1` at the top). The dialog still answers normally.
+8. A question briefing renders above the chart and an option briefing inside
    its card, below the bars. An option briefing carrying a `+`/`-` run draws
    the plus and minus glyphs in both schemes, and a `-`-only run beside it
    still draws ordinary bullets. A question carrying a briefing and no metric tag
@@ -464,22 +513,22 @@ after changing the decision shape:
    `askq.js` wired in, click a card whose briefing contains a table and
    a fenced block: the answer arrives keyed to the stripped question, and the
    briefing does not swallow the click.
-7. Keyboard: `1`–`4` selects the nth card, matching a click — a single-select
+9. Keyboard: `1`–`4` selects the nth card, matching a click — a single-select
    card pressed twice stays selected, a `multiSelect` one toggles off. `5` does
    nothing. Typing a digit into "Something else" reaches the field and selects
    no card. With two questions, the digit lands in whichever holds focus, and
    with nothing focused, in the one nearest the top.
-8. `Cmd+Enter` sends only once every question is answered; `Escape` hands back.
+10. `Cmd+Enter` sends only once every question is answered; `Escape` hands back.
    Clicking Send posts with no native confirmation in between.
-9. With three questions the footer names the first unanswered one and scrolls to
+11. With three questions the footer names the first unanswered one and scrolls to
    it on click, then disappears once all three are answered. A heading
    containing `<img src=x onerror=alert(1)>` renders there as literal text.
-10. The countdown is absent until the last minute, then counts down to the
+12. The countdown is absent until the last minute, then counts down to the
    unchanged `Expired — answer in the terminal.`
-11. The scheme toggle flips the whole page, and a briefing diagram flips with
+13. The scheme toggle flips the whole page, and a briefing diagram flips with
    it rather than keeping its load-time colors. Check that a second click
    returns to the first scheme and leaves one SVG per fence, not two.
-12. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
+14. A briefing carrying a ```` ```mermaid ```` fence draws the diagram, themed to
    the page — check it in both light and dark, since the theme is read off the
    custom properties at load and not re-read on a scheme change. A second fence
    with deliberately broken syntax stays on screen as its own source with no

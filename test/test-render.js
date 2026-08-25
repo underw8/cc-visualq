@@ -66,7 +66,7 @@ const { shapeOf, pickForm, renderChart } = require('../hooks/lib/charts.js');
 const { prepareOptions } = require('../hooks/lib/render.js');
 
 const prep = (options) => prepareOptions({ options });
-const { scalesFor } = require('../hooks/lib/metrics.js');
+const { scalesFor, winnersFor } = require('../hooks/lib/metrics.js');
 const scaleOf = (options) => scalesFor(options.map((o) => o.metrics));
 
 console.log('5. form selection and degradation');
@@ -112,8 +112,8 @@ console.log('6. grouped renderer');
   has('one block per metric key', html, '<h4>bundle</h4>');
   has('largest option is full width', html, 'width:100.0%');
   has('smaller option scaled', html, 'width:26.7%');
-  has('series class applied', html, 'class="s0"');
-  has('second series distinct', html, 'class="s1"');
+  has('a bar carries width and nothing else', html, '<i style="width:100.0%">');
+  lacks('no per-option series class survives', html, 'class="s0"');
   has('option label is the row key', html, 'React');
   has('raw value shown', html, '45');
 
@@ -139,7 +139,8 @@ console.log('7. the page uses the requested form');
     ],
   }]);
   has('chart block present', page, 'class="chart grouped"');
-  has('palette is defined', page, '--s0:');
+  lacks('the series palette is gone', page, '--s0:');
+  has('the chart track is capped', page, '.chart .metric {');
   // Non-bars forms move the metrics out of the cards.
   eq('cards carry no metric rows',
     /<button type="button" class="card"[\s\S]*?class="metric"/.test(page), false);
@@ -160,7 +161,8 @@ console.log('8. matrix renderer');
   has('option label is a row header', html, '<th scope="row">A</th>');
   has('exact value in the cell', html, '$12');
   has('missing value is an em dash', html, '—');
-  has('rank fill carries the series class', html, 'class="fill s0"');
+  has('the bar is a rule under the number', html, '<span class="u">');
+  lacks('nothing is read through a fill', html, 'class="fill');
   eq('one row per option', (html.match(/<tr><th scope="row">/g) || []).length, 3);
 
   const evil = prep([
@@ -372,7 +374,7 @@ console.log('18. the scheme toggle');
   // Every token carries a bare hex before its light-dark(), so an engine that
   // drops the function keeps the light theme instead of losing the token.
   const tokens = ['fg', 'mut', 'line', 'accent', 'card', 'bg', 'ok',
-    's0', 's1', 's2', 'pro', 'con'];
+    'pro', 'con', 'warn'];
   const missing = tokens.filter((t) => !page.includes(`--${t}:light-dark(`));
   eq('every two-scheme token uses light-dark', missing.join(',') || 'none', 'none');
   const unguarded = tokens.filter((t) => {
@@ -380,8 +382,6 @@ console.log('18. the scheme toggle');
     return !page.slice(Math.max(0, at - 40), at).includes(`--${t}:#`);
   });
   eq('and each has a bare-hex fallback before it', unguarded.join(',') || 'none', 'none');
-  // --s3 clears both surfaces, so it is one value on purpose, not an omission.
-  lacks('--s3 stays a single value', page, '--s3:light-dark(');
 
   // Mermaid bakes computed colors into its SVG, so only a page that loaded the
   // bundle carries the redraw hook.
@@ -417,6 +417,117 @@ console.log('19. a filled accent has its own ink');
   lacks('no filled accent site hardcodes white', page, 'color:#fff;');
   // A single value, deliberately: a scheme-flipping accent would need a pair.
   lacks('and it needs no light-dark pair', page, '--on-accent:light-dark(');
+}
+
+console.log('20. an ordinal states its band and its place');
+{
+  const options = prep([
+    { label: 'A', description: 'a {chart: grouped, risk: low, cost: $4}' },
+    { label: 'B', description: 'b {risk: critical, cost: $8}' },
+  ]);
+  const { name, shape } = pickForm('grouped', options);
+  const html = renderChart(name, options, scaleOf(options), shape);
+  // The vocabulary is a severity scale, so the word carries its own valence and
+  // the band needs no declared direction.
+  has('a low ordinal reads as good', html, '<span class="pill good">low</span>');
+  has('critical reads as bad', html, '<span class="pill bad">critical</span>');
+  has('and it keeps its place on the scale', html, '<span class="track ord">');
+  // A number is never a pill, and never wears a band.
+  eq('a numeric key draws no pill',
+    /class="pill[^"]*">\$4/.test(html), false);
+  has('the number states itself', html, '<span class="v">$4</span>');
+
+  // The matrix form drops the bar for an ordinal: a state has no length.
+  const m = pickForm('matrix', options);
+  const mhtml = renderChart(m.name, options, scaleOf(options), m.shape);
+  has('the matrix pill survives', mhtml, '<span class="pill good">low</span>');
+  eq('and carries no rule under it',
+    /pill good">low<\/span><\/span>\s*<span class="u">/.test(mhtml), false);
+
+  // A card row is the same cell, so the two cannot drift apart.
+  const page = renderPage(Q([{ label: 'A', description: 'x. {risk: medium}' }]));
+  has('a card ordinal is a pill too', page, '<span class="pill mid">medium</span>');
+  has('with the stepped track', page, '<span class="track ord">');
+  has('the mid band has a token', page, '--warn:light-dark(');
+}
+
+console.log('21. a declared direction marks the winner');
+{
+  const options = prep([
+    { label: 'A', description: 'a {chart: grouped, size\u2193: 3kb, risk\u2193: low}' },
+    { label: 'B', description: 'b {size: 13kb, risk: low}' },
+  ]);
+  const { name, shape } = pickForm('grouped', options);
+  const scale = scaleOf(options);
+  const w = winnersFor(options.map((o) => o.metrics));
+  const html = renderChart(name, options, scale, shape, w);
+  has('the winner carries the glyph', html, '<span class="mark">\u2713</span>');
+  has('the loser is dimmed', html, 'class="v dim">13kb');
+  lacks('the winner is not dimmed', html, 'class="v dim">3kb');
+  // The losing fill recedes too, so the accent is left meaning "best here".
+  has('a losing fill is neutral', html, '<i class="dim" style="width:100.0%">');
+  has('and the winning fill keeps the accent', html, '<i style="width:23.1%">');
+  has('the neutral fill has a rule', renderPage([{ question: 'q',
+    options: [{ label: 'A', description: 'a {size\u2193: 3kb}' },
+      { label: 'B', description: 'b {size: 13kb}' }] }]),
+    '.track i.dim, .u b.dim {');
+  has('the key states what the glyph means', html, 'lower is better');
+  // A tie marks both, and an ordinal is never dimmed: its pill ink is its band.
+  eq('both tied ordinals win',
+    (html.match(/pill good">low<\/span><\/span><span class="mark">\u2713/g) || []).length, 2);
+
+  // The matrix form marks the cell, not the row.
+  const m = pickForm('matrix', options);
+  const mhtml = renderChart(m.name, options, scale, m.shape, w);
+  has('the winning cell is flagged', mhtml, '<td class="win">');
+  has('the column states its direction', mhtml, '<span class="dir">\u2193</span>');
+  has('the losing value is dimmed', mhtml, 'class="cv dim">13kb');
+  // The matrix has no glyph column, so the cell wears the tick through CSS.
+  has('the winning cell wears a tick', renderPage([{ question: 'q',
+    options: [{ label: 'A', description: 'a {chart: matrix, size\u2193: 3kb}' },
+      { label: 'B', description: 'b {size: 13kb}' }] }]),
+    'td.win .cv::after');
+
+  // A card row scales against every option, so it marks the winner too.
+  const page = renderPage([{
+    question: 'Which?',
+    options: [
+      { label: 'A', description: 'a. {size\u2193: 3kb}' },
+      { label: 'B', description: 'b. {size: 13kb}' },
+    ],
+  }]);
+  has('a card marks its win', page, '<span class="mark">\u2713</span>');
+  has('and dims the other card', page, 'class="v dim">13kb');
+
+  // A declared direction outranks the vocabulary's severity reading, so a high
+  // value on an up key is good news rather than a red badge.
+  const up = prep([
+    { label: 'A', description: 'a {chart: grouped, reach\u2191: high}' },
+    { label: 'B', description: 'b {reach: none}' },
+    { label: 'C', description: 'c {reach: low}' },
+  ]);
+  const u = pickForm('grouped', up);
+  const uhtml = renderChart(u.name, up, scaleOf(up), u.shape,
+    winnersFor(up.map((o) => o.metrics)));
+  has('high reads as good on an up key', uhtml, 'pill good">high');
+  has('and none reads as bad', uhtml, 'pill bad">none');
+  // The inversion mirrors the whole scale, so a middling word stays middling.
+  has('low lands in the middle band', uhtml, 'pill mid">low');
+  // Down keys and undeclared keys keep the severity reading.
+  has('a down key keeps severity', html, 'pill good">low');
+
+  // Without a direction nothing wins, so nothing is dimmed and no glyph shows.
+  const plain = prep([
+    { label: 'A', description: 'a {chart: grouped, size: 3kb}' },
+    { label: 'B', description: 'b {size: 13kb}' },
+  ]);
+  const p = pickForm('grouped', plain);
+  const phtml = renderChart(p.name, plain, scaleOf(plain), p.shape,
+    winnersFor(plain.map((o) => o.metrics)));
+  lacks('an undeclared key marks nothing', phtml, '\u2713');
+  lacks('and dims nothing', phtml, 'v dim');
+  has('but still emits the glyph column', phtml, '<span class="mark"></span>');
+  lacks('and greys no fill', phtml, '<i class="dim"');
 }
 
 console.log(fail ? 'FAIL' : 'PASS');

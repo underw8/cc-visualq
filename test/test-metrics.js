@@ -2,7 +2,7 @@
 // Self-check for hooks/lib/metrics.js: unit normalization, ordinals, scaling.
 'use strict';
 
-const { parseMetrics, scalesFor, barPercent, parseValue } =
+const { parseMetrics, scalesFor, barPercent, parseValue, winnersFor, rankOf } =
   require('../hooks/lib/metrics.js');
 
 let fail = 0;
@@ -72,10 +72,18 @@ const ordOpts = [
   parseMetrics('b {risk:high}').metrics,
 ];
 const ordScale = scalesFor(ordOpts);
-close('high risk is 80%', barPercent(ordOpts[1][0], ordScale), 80);
+// Whole steps, so the fill lands on a segment boundary of the stepped track:
+// `high` is the fifth of six named steps.
+close('high risk fills five steps of six', barPercent(ordOpts[1][0], ordScale), 83.3);
+close('critical fills all six',
+  barPercent(parseMetrics('c {risk:critical}').metrics[0], ordScale), 100);
+// `none` is a stated value on the scale, so it draws its own step rather than
+// a stub.
+close('none draws one step',
+  barPercent(parseMetrics('d {risk:none}').metrics[0], ordScale), 16.7);
 // A lone `low` still draws a short bar rather than nothing.
 const soloScale = scalesFor([parseMetrics('a {risk:low}').metrics]);
-close('lone low still draws', barPercent(parseMetrics('a {risk:low}').metrics[0], soloScale), 40);
+close('lone low still draws', barPercent(parseMetrics('a {risk:low}').metrics[0], soloScale), 50);
 
 console.log('6. mixed units under one key fall back to raw numbers');
 const mixed = [
@@ -198,6 +206,49 @@ console.log('10. briefings');
   eq('no key added to the option',
     Object.keys(keys.questions[0].options[0]).sort((a, b) => a.localeCompare(b)).join(','),
     'description,label');
+}
+
+console.log('10. a direction picks a winner');
+{
+  const of = (d) => parseMetrics(d).metrics;
+  // The arrow is a property of the key, so it is stripped before keys are
+  // compared and one option declaring it settles the whole column.
+  const ms = [
+    of('{size\u2193: 3kb, cover\u2191: 40%, risk\u2193: low}'),
+    of('{size: 13kb, cover: 80%, risk: low}'),
+    of('{size: 4kb, cover: 60%, risk: medium}'),
+  ];
+  eq('the arrow is stripped from the key', ms[0][0].key, 'size');
+  eq('an option without it lands on the same key', ms[1][0].key, 'size');
+  scalesFor(ms);
+  const w = winnersFor(ms);
+  eq('lower is recorded', w.dir.get('size'), 'lower');
+  eq('higher is recorded', w.dir.get('cover'), 'higher');
+  eq('smallest wins a lower key', rankOf(ms[0][0], w), true);
+  eq('largest loses it', rankOf(ms[1][0], w), false);
+  eq('largest wins a higher key', rankOf(ms[1][1], w), true);
+  eq('smallest loses it', rankOf(ms[0][1], w), false);
+  // Ties all win: two options at `low` are both best on it.
+  eq('a tied ordinal wins', rankOf(ms[0][2], w), true);
+  eq('and so does its twin', rankOf(ms[1][2], w), true);
+  eq('the worse one still loses', rankOf(ms[2][2], w), false);
+
+  // Nothing in `3kb` says small is good, so an undeclared key stays unranked
+  // rather than being guessed at.
+  const plain = [of('{size: 3kb}'), of('{size: 13kb}')];
+  scalesFor(plain);
+  const pw = winnersFor(plain);
+  eq('an undeclared key has no direction', pw.dir.has('size'), false);
+  eq('and so no winner', rankOf(plain[0][0], pw), null);
+
+  // A key whose values carry no magnitude has nothing to rank.
+  const text = [of('{tone\u2193: warm}'), of('{tone: cool}')];
+  scalesFor(text);
+  const tw = winnersFor(text);
+  eq('text values leave the key unranked', rankOf(text[0][0], tw), null);
+
+  // A bare arrow is not a key.
+  eq('an arrow alone declares nothing', of('{\u2193: 3kb}').length, 0);
 }
 
 console.log('\n' + (fail ? 'FAILURES' : 'PASS'));

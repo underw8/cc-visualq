@@ -154,6 +154,12 @@ comparison. Values may be numbers with units (`$12/mo`, `40ms`, `4mb`, `80%`,
 `1,200`) or ordinals (`none`, `minimal`, `low`, `medium`, `high`, `critical`).
 Units are normalized per key, so `4mb` outranks `12kb`.
 
+A key may say which end of it is better — `{size↓: 3kb}` for less, `{coverage↑:
+80%}` for more. The best value in that key is ticked and the rest are dimmed;
+ties tick together. The arrow is a property of the key, so one option declaring
+it settles the column and the rest may omit it. A key with no arrow is left
+unranked rather than guessed at: nothing in `3kb` says small is good.
+
 The reserved `chart` key picks the form, declared on the first option:
 
 | `chart:` | Shows | Needs |
@@ -186,12 +192,22 @@ Values are normalized before comparison, so mixed units rank correctly:
 | `$12/mo`, `120kb/s` | the `/period` is dropped, the magnitude ranks |
 | `2m` stars / `30m` build | millions or minutes, from the other values under that key |
 | `80%` | percent |
-| `low`, `medium`, `high`, `critical` | ordinal scale, drawn proportionally |
+| `low`, `medium`, `high`, `critical` | ordinal scale, drawn as a step and a badge |
 | `bananas` | text, shown without a bar |
 
 Ordinal words are a fixed vocabulary: `none`, `minimal`, `low`, `medium`,
 `high`, `critical` — the same six the session rule tells Claude to use. Anything
 outside it renders as plain text rather than being guessed at.
+
+An ordinal is drawn twice over, because it is both a state and a rank: the word
+appears as a badge, tinted green through amber to red by where it falls in that
+vocabulary, beside a track cut into the six steps and filled to its own. The
+tint reads off the word alone — `critical` is bad news under any key — so no
+option declares which direction is better. Numbers are never badged.
+
+Bars carry no per-option color. Every bar is the accent, and an option is
+identified by its row label and its position, which each block repeats in the
+same order.
 
 A key whose values mix dimensions (one `4mb`, one `2s`) falls back to ranking the
 raw numbers, since no shared scale exists.

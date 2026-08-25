@@ -1,7 +1,7 @@
 ## Authoring AskUserQuestion options
 
 When options differ on measurable dimensions, end each description with a
-metric tag: `{chart: grouped, cost: $12/mo, setup: 2h, risk: low}`
+metric tag: `{chart: grouped, cost↓: $12/mo, setup↓: 2h, risk↓: low}`
 
 - Same keys, same units, on every option of the question. 2-4 keys.
 - Values: number + unit — `$` `%`, time `ms s min h`, size `kb mb gb`,
@@ -9,6 +9,11 @@ metric tag: `{chart: grouped, cost: $12/mo, setup: 2h, risk: low}`
   No comma inside a value. `m` and `b` read as minutes/bytes or
   millions/billions from the other values under the same key, so keep one
   dimension per key.
+- Mark a key `↓` when less is better or `↑` when more is better, on the first
+  option that carries it. The best value per key is then ticked and the rest
+  dimmed, which is the fastest thing on the page to read. Leave the arrow off
+  a key where neither end is better, and off one whose direction depends on
+  something the reader knows and you don't. Never infer it from the unit.
 - `chart` picks the form, on the first option only:
   grouped (magnitudes side by side, one block per key) · matrix (exact values
   in a table, best when a key is missing on some option) · bars (default,

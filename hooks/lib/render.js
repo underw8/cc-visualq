@@ -4,8 +4,8 @@
 // over loopback and interprets the POST that comes back.
 
 const { esc } = require('./esc.js');
-const { parseMetrics, splitBrief, scalesFor, barPercent } = require('./metrics.js');
-const { pickForm, renderChart } = require('./charts.js');
+const { parseMetrics, splitBrief, scalesFor, winnersFor, rankOf } = require('./metrics.js');
+const { pickForm, renderChart, markCell } = require('./charts.js');
 const { renderMd } = require('./md.js');
 const { pageScript, mermaidScript } = require('./page-script.js');
 
@@ -17,7 +17,7 @@ const STYLES = `
      function drops the second declaration and keeps the light theme rather
      than losing the token altogether.
      --ok is the accent, not a green: selection means chosen, not successful,
-     and a green tick beside the green --s3 series read as a status light.
+     and a green tick reads as a status light beside the ordinal pill's own.
      --accent is ink at one site and fill at another, and those pull opposite
      ways: #fff over the dark accent measures 2.62:1. --on-accent is the ink for
      a filled accent, read by #send and .tick::after, and any third filled site.
@@ -33,11 +33,8 @@ const STYLES = `
           --card:#faf9f5; --card:light-dark(#faf9f5,#262624);
           --bg:#f2f0e9; --bg:light-dark(#f2f0e9,#191917);
           --ok:#c96442; --ok:light-dark(#c96442,#e08a68);
-          --s0:#2a78d6; --s0:light-dark(#2a78d6,#3987e5);
-          --s1:#eda100; --s1:light-dark(#eda100,#c98500);
-          --s2:#e87ba4; --s2:light-dark(#e87ba4,#d55181);
-          --s3:#008300;
           --pro:#046b34; --pro:light-dark(#046b34,#3fbf72);
+          --warn:#8a5a00; --warn:light-dark(#8a5a00,#e0a33c);
           --con:#b3261e; --con:light-dark(#b3261e,#f2837a);
           --on-accent:#0b0b0b; }
   /* The toggle writes one property and every token above follows it. */
@@ -95,13 +92,48 @@ const STYLES = `
          color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent);
          vertical-align:.08em; }
   .card p { margin:0 0 .85rem; color:var(--mut); font-size:.875rem; }
-  .metric { display:grid; grid-template-columns:minmax(4rem,auto) 1fr minmax(2.5rem,auto);
+  .metric { display:grid;
+            grid-template-columns:minmax(4rem,auto) 1fr minmax(2.5rem,auto) .9rem;
             align-items:center; gap:.6rem; margin-top:.45rem; font-size:.8rem; }
+  /* A card is narrow enough for the track to fill it; a chart block sits in a
+     64rem page, where a 1fr track puts the value a viewport away from the bar
+     end it belongs to. The cap is what keeps the two adjacent. */
+  .chart .metric { grid-template-columns:minmax(5rem,7rem) 20rem auto .9rem;
+            justify-content:start; }
   .k { color:var(--mut); text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .track { height:7px; background:color-mix(in srgb, var(--accent) 14%, transparent);
-           border-radius:4px; overflow:hidden; }
-  .track i { display:block; height:100%; background:var(--c,var(--accent)); border-radius:4px; }
+  /* The unfilled remainder is neutral, not a wash of the fill's own hue: with
+     one accent on every bar, an accent-tinted track separates from the fill by
+     alpha alone. */
+  .track { height:7px; background:color-mix(in srgb, var(--fg) 8%, transparent);
+           border-radius:4px; position:relative; }
+  .track i { display:block; height:100%; background:var(--accent);
+           border-radius:0 4px 4px 0; }
+  /* An ordinal is one of six named steps, so its track is cut into six. The
+     gaps are painted over the whole track in the surface color: segmenting the
+     fill instead scales the pitch to the fill's own width, and every row then
+     reads as a different scale. */
+  .track.ord::after { content:''; position:absolute; inset:0;
+           background:repeating-linear-gradient(90deg,
+             transparent 0 calc(16.666% - 2px), var(--card) calc(16.666% - 2px) 16.666%); }
+  /* The word states the ordinal; the track only places it. Ink carries the
+     band, so the pill survives a reader who sees no color at all. */
+  .pill { display:inline-flex; font-weight:600; font-size:.95em; line-height:1.35;
+           padding:0 .45rem; border-radius:999px; border:1px solid currentColor; }
+  .pill.good { color:var(--pro); } .pill.mid { color:var(--warn); }
+  .pill.bad { color:var(--con); }
   .v { font-variant-numeric:tabular-nums; font-weight:600; }
+  /* A declared direction is what earns the glyph and the dimming: without one
+     no row wins, so nothing is dimmed and this never fires. Ink weight and the
+     glyph carry the win together, so it survives a reader who sees no color \u2014
+     which is also why the accent is not the mark. */
+  .mark { color:var(--accent); font-weight:700; line-height:1; }
+  .v.dim, .cv.dim { color:var(--mut); font-weight:500; }
+  /* A losing fill recedes to neutral, so the accent is left meaning "best on
+     this key". It stays a lightness step from the accent (1.94:1 light,
+     2.26:1 dark) rather than a hue away, so the pair survives greyscale; the
+     glyph is what carries the win where neither reads. */
+  .track i.dim, .u b.dim { background:color-mix(in srgb, var(--fg) 30%, transparent); }
+  h4 .dir, table.matrix .dir { font-weight:400; color:var(--mut); }
   footer { position:fixed; inset:auto 0 0 0; padding:.9rem 1.5rem;
            background:color-mix(in srgb,var(--card) 82%,transparent);
            backdrop-filter:blur(8px);
@@ -124,25 +156,23 @@ const STYLES = `
            padding:1rem 1.1rem; margin:0 0 1rem; overflow-x:auto; }
   .chart h4 { margin:0 0 .35rem; font-size:.8rem; font-weight:650; color:var(--mut); }
   .gblock + .gblock { margin-top:.9rem; }
-  /* One custom property per option slot; every series-colored mark reads
-     var(--c), so a new mark costs one rule and not one per option slot. */
-  .s0 { --c:var(--s0); } .s1 { --c:var(--s1); }
-  .s2 { --c:var(--s2); } .s3 { --c:var(--s3); }
   table.matrix { width:100%; border-collapse:collapse; font-size:.82rem; }
   table.matrix th, table.matrix td { text-align:left; padding:.4rem .55rem; }
   table.matrix thead th { color:var(--mut); font-weight:650; }
   table.matrix tbody tr + tr th, table.matrix tbody tr + tr td {
     border-top:1px solid var(--line); }
   table.matrix th[scope="row"] { font-weight:650; white-space:nowrap; }
-  table.matrix td { position:relative; font-variant-numeric:tabular-nums; }
+  table.matrix td { font-variant-numeric:tabular-nums; vertical-align:top; }
   table.matrix tbody tr { transition:background-color var(--mid); }
   table.matrix tbody tr:hover { background:color-mix(in srgb, var(--fg) 4%, transparent); }
-  .fill { position:absolute; left:0; top:.25rem; bottom:.25rem; border-radius:3px;
-          opacity:.22; background:var(--c); transform-origin:left;
-          animation:grow .45s var(--ease) .1s backwards;
-          transition:opacity var(--mid); }
-  table.matrix tbody tr:hover .fill { opacity:.34; }
-  .cv { position:relative; }
+  .cv { display:block; font-weight:600; }
+  /* The matrix has no glyph column of its own, so the winning cell wears the
+     same tick the grouped rows get. */
+  td.win .cv::after { content:" ✓"; color:var(--accent); }
+  .u { display:block; height:4px; max-width:7rem; margin-top:.3rem; border-radius:2px;
+       background:color-mix(in srgb, var(--fg) 8%, transparent); }
+  .u b { display:block; height:100%; border-radius:2px; background:var(--accent);
+       transform-origin:left; animation:grow .45s var(--ease) .1s backwards; }
   .card.other { cursor:text; }
   .card.other input { width:100%; font:inherit; font-size:.875rem; color:inherit;
         background:transparent; border:0; border-bottom:1px solid var(--line);
@@ -252,14 +282,12 @@ function prepareOptions(q) {
   });
 }
 
-function barRows(o, scale) {
+// A card's rows already scale against every option's values, so a declared
+// direction marks the winner here too rather than only inside a chart block.
+function barRows(o, scale, winners) {
   return o.metrics
-    .map((m) => {
-      const pct = barPercent(m, scale);
-      return `<div class="metric"><span class="k">${esc(m.key)}</span>
-            <span class="track">${pct ? `<i style="width:${pct.toFixed(1)}%"></i>` : ''}</span>
-            <span class="v">${esc(m.raw)}</span></div>`;
-    })
+    .map((m) => `<div class="metric"><span class="k">${esc(m.key)}</span>
+            ${markCell(m, scale, rankOf(m, winners), winners?.dir.get(m.key))}</div>`)
     .join('');
 }
 
@@ -292,7 +320,10 @@ function card(o, { qi, oi, multi, body }) {
 function renderQuestion(q, qi) {
   const options = prepareOptions(q);
   const { text: qText, brief: qBrief } = splitBrief(q.question);
-  const scale = scalesFor(options.map((o) => o.metrics));
+  const metrics = options.map((o) => o.metrics);
+  const scale = scalesFor(metrics);
+  // After scalesFor, which is what normalizes the values this compares.
+  const winners = winnersFor(metrics);
   const multi = q.multiSelect === true;
   const requested = options.map((o) => o.chart).find(Boolean) || 'bars';
 
@@ -303,7 +334,7 @@ function renderQuestion(q, qi) {
   let chart = '';
   try {
     const picked = pickForm(requested, options);
-    chart = renderChart(picked.name, options, scale, picked.shape);
+    chart = renderChart(picked.name, options, scale, picked.shape, winners);
     form = picked.name;
   } catch {
     form = 'bars';
@@ -312,7 +343,7 @@ function renderQuestion(q, qi) {
 
   // An option with no metrics renders no metric block. Naming the absence
   // costs a line and tells the reader nothing the empty card doesn't.
-  const bodyFor = (o) => (form === 'bars' ? barRows(o, scale) : '');
+  const bodyFor = (o) => (form === 'bars' ? barRows(o, scale, winners) : '');
   const cards = options
     .map((o, oi) => card(o, { qi, oi, multi, body: bodyFor(o) }))
     .join('');

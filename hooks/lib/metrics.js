@@ -84,6 +84,12 @@ function parseValue(raw) {
 // named `chart` loses it; there is no escape hatch.
 const RESERVED = 'chart';
 
+// A trailing arrow on a key says which end of it is better: `{size\u2193: 3kb}` for
+// lower, `{coverage\u2191: 80%}` for higher. It is a property of the key rather than
+// of one option's value, so it is stripped before the key is compared and an
+// option that omits the arrow still lands under the same key.
+const DIRECTED = /^(.*?)\s*([\u2193\u2191])$/;
+
 function parseMetrics(description) {
   const m = METRIC_TAG.exec(description || '');
   if (!m) return { clean: (description || '').trim(), metrics: [], chart: '' };
@@ -95,11 +101,14 @@ function parseMetrics(description) {
   for (const pair of m[1].split(/,(?=\s*[^,:]+\s*:)/)) {
     const idx = pair.indexOf(':');
     if (idx === -1) continue;
-    const key = pair.slice(0, idx).trim();
+    let key = pair.slice(0, idx).trim();
     const raw = pair.slice(idx + 1).trim();
+    const d = DIRECTED.exec(key);
+    let dir = '';
+    if (d) { key = d[1].trim(); dir = d[2] === '\u2193' ? 'lower' : 'higher'; }
     if (!key || !raw) continue;
     if (key.toLowerCase() === RESERVED) { chart = chart || raw; continue; }
-    metrics.push({ key, raw, ...parseValue(raw) });
+    metrics.push({ key, raw, dir, ...parseValue(raw) });
   }
   return { clean: description.slice(0, m.index).trim(), metrics, chart };
 }
@@ -198,11 +207,48 @@ function scalesFor(optionMetrics) {
   return max;
 }
 
+// Which value wins each directed key, and the direction that decided it. A key
+// with no arrow gets no winner: nothing in `3kb` says small is good, so an
+// undeclared key is left unranked rather than guessed at. The first arrow seen
+// under a key settles its direction. Ties all win \u2014 two options at `low` are
+// both best on it. Run after `scalesFor`, which is what normalizes the values
+// this compares.
+function winnersFor(optionMetrics) {
+  const dir = new Map();
+  for (const m of optionMetrics.flat()) {
+    if (m.dir && !dir.has(m.key)) dir.set(m.key, m.dir);
+  }
+  const best = new Map();
+  for (const [key, group] of groupByKey(optionMetrics)) {
+    const d = dir.get(key);
+    if (!d) continue;
+    const values = group.map((m) => m.value).filter((v) => Number.isFinite(v));
+    if (!values.length) continue;
+    best.set(key, d === 'lower' ? Math.min(...values) : Math.max(...values));
+  }
+  return { dir, best };
+}
+
+// true when this metric wins its key, false when it loses, null when the key
+// carries no direction and so has no winner to lose to.
+function rankOf(m, winners) {
+  if (!m || !winners || !winners.best.has(m.key)) return null;
+  return Number.isFinite(m.value) && m.value === winners.best.get(m.key);
+}
+
 // Bar width for one metric, 0 when it has no magnitude to show.
+//
+// An ordinal fills whole steps: rank 0 is one step of six, `critical` is all
+// six. Dividing by the top rank instead would put `low` at 40% of a track cut
+// into sixths, so the fill would stop inside a segment and the step count would
+// stop meaning anything. The divisor here and the segment pitch of
+// `.track.ord` in `render.js` are the same six and have to move together.
 function barPercent(metric, scale) {
   const peak = scale.get(metric.key) ?? 0;
   if (peak <= 0 || !Number.isFinite(metric.value)) return 0;
+  if (metric.kind === 'ordinal') return ((metric.value + 1) / (metric.max + 1)) * 100;
   return Math.max(2, (Math.abs(metric.value) / peak) * 100);
 }
 
-module.exports = { parseMetrics, stripTags, splitBrief, scalesFor, barPercent, parseValue };
+module.exports = { parseMetrics, stripTags, splitBrief, scalesFor, barPercent,
+  parseValue, winnersFor, rankOf };
