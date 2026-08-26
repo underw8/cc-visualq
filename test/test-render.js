@@ -342,15 +342,17 @@ console.log('17. trade-off lists on a card');
     ],
   }]);
   has('the marked run reaches the card', page, '<ul class="md-list procon">');
-  has('a pro item', page, '<li class="pro">fast</li>');
-  has('a con item', page, '<li class="con">untyped</li>');
+  has('a pro item', page, '<li class="pro"><span class="g">+</span> fast</li>');
+  has('a con item', page, '<li class="con"><span class="g">\u2212</span> untyped</li>');
   has('a dash-only run stays an ordinary list', page, '<ul class="md-list"><li>ordinary</li>');
 
   // The glyph is what carries the valence: red and green collapse under
   // deuteranopia, so a rule that only set a color would say nothing to a
   // reader who cannot separate them.
-  has('the pro glyph is a plus', page, '.procon .pro::before { content:"+";');
-  has('the con glyph is a true minus, not a hyphen', page, 'content:"\\2212"');
+  has('the pro glyph is a plus', page, '<span class="g">+</span>');
+  has('the con glyph is a true minus, not a hyphen', page, '<span class="g">\u2212</span>');
+  has('the glyph is inked by the pro token', page, '.procon .pro .g { color:var(--pro); }');
+  has('and the con glyph by the con token', page, '.procon .con .g { color:var(--con); }');
   has('the pro token names both schemes', page, '--pro:light-dark(#046b34,#3fbf72)');
   has('and the con token too', page, '--con:light-dark(#b3261e,#f2837a)');
   // One grid column for the glyph, so a pro and a con start their text at the

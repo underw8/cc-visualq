@@ -24,6 +24,7 @@ const path = require('node:path');
 const { openUrl } = require('./lib/launch.js');
 const { stripTags } = require('./lib/metrics.js');
 const { renderPage } = require('./lib/render.js');
+const { withPreviews } = require('./lib/preview.js');
 
 // Must stay below the hook's configured `timeout` so the process exits on its
 // own terms and the dialog appears, rather than being killed mid-write.
@@ -72,6 +73,24 @@ function main(raw) {
   // With neither a metric tag nor a briefing the page shows exactly what the
   // terminal dialog already does, so opening a browser is pure interruption.
   if (!hasMetrics && !hasBrief) return passThrough();
+
+  // A host that renders an option's preview as HTML draws the comparison
+  // itself, so the whole loopback apparatus is unnecessary there: the fragment
+  // rides back on the tool input and the native dialog asks the question. The
+  // format is feature-detected rather than read off CLAUDE_CODE_ENTRYPOINT,
+  // which names four surfaces and settles nothing about what they can draw.
+  if (process.env.CLAUDE_CODE_QUESTION_PREVIEW_FORMAT === 'html') {
+    return respond({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        // "ask" keeps the reader in the dialog. "allow" would skip it, which is
+        // only ever correct beside answers the reader actually chose.
+        permissionDecision: 'ask',
+        updatedInput: { questions: withPreviews(cleaned, questions) },
+        permissionDecisionReason: 'Comparison drawn in the question dialog',
+      },
+    });
+  }
 
   const nonce = crypto.randomBytes(16).toString('hex');
   const html = renderPage(questions, { nonce, waitMs: WAIT_MS });

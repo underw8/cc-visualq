@@ -6,8 +6,10 @@ along numbers you care about (bundle size, latency, risk, weeks of work), text
 makes you hold the comparison in your head.
 
 This plugin renders those options as an HTML comparison chart in your
-terminal's embedded browser, and you answer by clicking a card. If no browser
-appears, the terminal dialog asks as it always would.
+terminal's embedded browser, and you answer by clicking a card. In the Claude
+Code desktop app the same comparison is drawn beside the options in the app's
+own dialog, with no browser at all. If neither surface is there, the terminal
+dialog asks as it always would.
 
 ## Install
 
@@ -59,6 +61,9 @@ sequenceDiagram
     alt no metric tag and no briefing
         H-->>CC: exit 0, no output
         Note over CC: terminal dialog asks unchanged
+    else the host draws previews as HTML
+        H-->>CC: ask + updatedInput.questions with previews
+        Note over CC: desktop app draws it in its own dialog
     else something to draw
         H->>H: mint nonce
         H->>R: renderPage
@@ -97,6 +102,7 @@ flowchart TD
     HJ["hooks/askq.js<br/>server, routes, decision"]
     ME["lib/metrics.js<br/>tag parsing, units, bar widths"]
     RE["lib/render.js<br/>page shell, cards, styles"]
+    PV["lib/preview.js<br/>inline-styled option fragment"]
     CH["lib/charts.js<br/>the three forms, form selection"]
     MD["lib/md.js<br/>briefing markdown subset"]
     PS["lib/page-script.js<br/>the browser script"]
@@ -107,6 +113,7 @@ flowchart TD
 
     HJ --> ME
     HJ --> RE
+    HJ --> PV
     HJ --> LA
     HJ -.->|"GET /mermaid.min.js"| VE
     RE --> ME
@@ -117,15 +124,20 @@ flowchart TD
     CH --> ME
     CH --> ES
     MD --> ES
+    PV --> ME
+    PV --> CH
+    PV --> MD
+    PV --> ES
     LA --> VS
 ```
 
-Markup has three owners: `render.js` the page shell and the cards, `charts.js`
-chart bodies, `md.js` briefing bodies. All three escape through the one
+Markup has four owners, one per surface it draws: `render.js` the page shell
+and the cards, `charts.js` chart bodies, `md.js` briefing bodies, `preview.js`
+the option fragment the desktop app renders. All four escape through the one
 `esc.js`, which is its own module because `charts.js` and `render.js` both need
 it and neither may require the other. Option labels and briefings are
 model-generated and reach a browser, so everything interpolated into HTML goes
-through it. `page-script.js` is not a fourth owner — it emits the browser
+through it. `page-script.js` is not a fifth owner — it emits the browser
 script, not markup.
 
 ### Reading the metrics
@@ -293,6 +305,23 @@ browser without `light-dark()` keeps the light theme and the button stays
 hidden. A briefing diagram is redrawn on switch, since mermaid bakes colors into
 its SVG and cannot read a custom property. Nothing is persisted: the port
 changes with every question, so there is no origin to remember it against.
+
+## The desktop app
+
+The desktop app renders an option's `preview` as HTML, so there the comparison
+goes into the app's own question dialog instead of a browser window: no port,
+no page, no waiting. The hook detects it by the format the app asks for
+(`CLAUDE_CODE_QUESTION_PREVIEW_FORMAT=html`) rather than by which surface is
+running, and every other host still gets the page.
+
+What the fragment can carry is set by the tool that renders it — an HTML
+fragment, no `<script>`, no `<style>` — so it holds the briefing, the
+comparison as a table with the same ticks, dimming and ordinal bands, and the
+option's own briefing beneath. What it cannot carry: the scheme toggle, mermaid
+diagrams (the fence stays readable as its own source), the countdown, and
+`↻ Ask again`. The
+app draws previews on single-select questions only, so a `multiSelect` question
+asks in the plain dialog.
 
 ## Browser selection
 

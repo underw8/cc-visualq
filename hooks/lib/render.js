@@ -228,10 +228,9 @@ const STYLES = `
      read than a card of pros. */
   .procon { list-style:none; padding-left:0; }
   .procon li { display:grid; grid-template-columns:.95rem 1fr; align-items:baseline; }
-  .procon li::before { font-weight:700; }
-  .procon .pro::before { content:"+"; color:var(--pro); }
-  /* U+2212, not a hyphen: it matches the plus in width and optical weight. */
-  .procon .con::before { content:"\\2212"; color:var(--con); }
+  .procon .g { font-weight:700; }
+  .procon .pro .g { color:var(--pro); }
+  .procon .con .g { color:var(--con); }
   .card .md-list { color:var(--mut); }
   .md-pre { margin:0 0 .8rem; padding:.7rem .85rem; overflow-x:auto; font-size:.8rem;
            background:color-mix(in srgb, var(--fg) 5%, transparent); border-radius:7px; }
@@ -267,10 +266,10 @@ const STYLES = `
   .mermaid svg { max-width:100%; height:auto; }
   /* Until mermaid claims it, the block is its own source: shown as code so a
      diagram that never renders — bad syntax, missing bundle, blocked script —
-     is still readable. */
+     is still readable. The block is a pre element, so the newlines and the
+     monospace are its own; only the wrapping and the frame are set here. */
   .mermaid:not([data-processed]) { display:block; white-space:pre-wrap;
-     font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8rem;
-     padding:.7rem .85rem; border-radius:7px;
+     font-size:.8rem; padding:.7rem .85rem; border-radius:7px;
      background:color-mix(in srgb, var(--fg) 5%, transparent); }
   @media (prefers-reduced-motion:reduce) {
     html { scroll-behavior:auto; }

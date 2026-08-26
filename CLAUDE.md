@@ -10,15 +10,16 @@ as an HTML comparison chart in the terminal's embedded browser.
 ## Commands
 
 ```sh
-make test            # all nine suites (./test/run-all.sh)
+make test            # all ten suites (./test/run-all.sh)
 make validate        # claude plugin validate .
 make check           # test + validate
 ```
 
 Suites need `node` and `bash`; no npm dependencies, no framework. Run one suite by
 invoking it directly — `node test/test-metrics.js`, `node test/test-md.js`,
-`node test/test-vscode.js`, `node test/test-render.js`, `node test/test-launch.js`,
-`node test/test-askq.js`, `node test/test-devhooks.js`, `./test/test-install.sh`.
+`node test/test-preview.js`, `node test/test-vscode.js`, `node test/test-render.js`,
+`node test/test-launch.js`, `node test/test-askq.js`, `node test/test-devhooks.js`,
+`./test/test-install.sh`.
 Only `test-install.sh` needs the `claude` CLI.
 There is no test-name filter, so narrowing further means commenting out sections.
 
@@ -70,6 +71,7 @@ hooks/hooks.json                 registrations: PreToolUse + SessionStart
 hooks/askq-rule.md               option-authoring rule, injected at session start
 hooks/askq.js              loopback server, blocks, answers the tool
 hooks/lib/render.js              the page: styles, cards, assembly
+hooks/lib/preview.js             the inline-styled fragment for a host that draws it
 hooks/lib/page-script.js         the browser script the page runs
 hooks/lib/charts.js              the three chart forms and form selection
 hooks/lib/esc.js                 HTML escaping, shared by render and charts
@@ -80,17 +82,25 @@ hooks/lib/metrics.js             tag parsing and stripping, units, bar widths
 scripts/dev-hooks.js             dev-install registration, merged not written
 vendor/mermaid.min.js            pinned diagram library, served by the hook
 vendor/README.md                 version, hash, and what to re-check on a bump
-test/run-all.sh                  runs all nine suites
+test/run-all.sh                  runs all ten suites
 test/test-load.js                every lib module parses; runs first
 test/test-md.js                  the subset and its escaping
+test/test-preview.js             the fragment, and the decision that carries it
 ```
 
 Metric parsing and scaling live in `lib/metrics.js`; browser launch in
-`lib/launch.js`. Markup has three owners: `render.js` the page shell and the
-cards, `charts.js` chart bodies, `md.js` briefing bodies. All three escape
-through the one `esc.js`. `page-script.js` is not a fourth: it emits the
-browser script, not markup. A styling change belongs in exactly one place. A
-change to parsing or bar widths belongs in `lib/metrics.js` only.
+`lib/launch.js`. Markup has four owners, one per surface it draws: `render.js`
+the page shell and the cards, `charts.js` chart bodies, `md.js` briefing
+bodies, `preview.js` the option fragment. All four escape through the one
+`esc.js`. `page-script.js` is not a fifth: it emits the browser script, not
+markup. `preview.js` is the only one with no stylesheet behind it, so it owns
+its own inline rules — but not the meaning behind them: the band a value reads
+in and the glyph a direction shows come from `bandOf` and `DIR_GLYPH` in
+`charts.js`, and its briefings are `md.js` output verbatim. It does restate the
+accent and the three band hexes, since no custom property of ours reaches that
+far: a palette change is two files, and nothing errors when only one moves. A styling change
+belongs in exactly one place. A change to parsing or bar widths belongs in
+`lib/metrics.js` only.
 
 `stripTags` strips the tag and reports whether a metric tag or a briefing was
 present, which is what decides whether a page opens at all: `askq.js` hands
@@ -144,6 +154,40 @@ countdown, the expiry, and a `/ping` on every third beat. The ping is there
 because an aborted hook — Ctrl-C, or a question answered in the terminal —
 closes the server without telling the browser, and waiting out the full 240s
 deadline leaves a dead page on screen.
+
+**A host that draws the preview itself gets no page at all.** The desktop app
+sets `CLAUDE_CODE_QUESTION_PREVIEW_FORMAT=html`, which makes an option's
+`preview` an HTML fragment it renders natively; `askq.js` then answers with
+`permissionDecision: "ask"` and an `updatedInput` carrying the fragments, and
+never binds a port. The format is feature-detected rather than read off
+`CLAUDE_CODE_ENTRYPOINT` — that names four surfaces (`claude-desktop`,
+`claude-desktop-3p`, `local-agent`, `sdk-ts`) and settles nothing about what any
+of them can draw, and the desktop only sends `html` when its own gate is on.
+Anything else, the env var included when it says `markdown`, still gets the
+loopback page. `"ask"` and not `"allow"`: nobody has chosen anything yet.
+
+**The fragment's shape is the tool's validator, not a preference.** It rejects
+a full document (`<html>`, `<body>`, `<!DOCTYPE>`), rejects `<script>` and
+`<style>`, and requires at least one tag. So `preview.js` carries every rule in
+a `style` attribute and the page's whole script side — the scheme toggle, the
+diagram, the countdown, `↻ Ask again` — has no equivalent there. `test-preview.js`
+transcribes those three checks rather than describing them.
+
+**The preview draws one form, and previews only single-select questions.**
+`chart:` picks between forms on the page because a scrolling page can afford to
+lose values to a shape; a fragment beside an option list cannot, so every key
+states its value the way `matrix` does. And the tool renders a preview on
+single-select questions only, so a `multiSelect` question passes through
+`withPreviews` untouched rather than carrying a fragment nothing will draw.
+
+**Two things in `md.js` are the way they are because a briefing also travels
+to a surface with no stylesheet.** The pro/con glyph is a `<span class="g">`
+rather than a CSS `content`, since valence has to survive where no rule of ours
+runs. And a mermaid fence is a `<pre class="mermaid">`, not a `<div>`: the
+element is what holds the newlines when nothing sets `white-space`, and it is
+mermaid's own container either way. Both read the same on the page — the
+stylesheet colors a glyph it no longer generates, and the `:not([data-processed])`
+rule now only adds wrapping and a frame to what `pre` already does.
 
 **A question with no metric tag and no briefing opens no page.** `askq.js`
 hands back before it binds a port, so no browser appears and the terminal
@@ -431,7 +475,7 @@ while `askq.js` waits is worse than a briefing without hyperlinks.
 one in the rule and not `md.js` renders as literal text. Neither errors.
 
 **Mermaid reads `textContent`, which is why the escape stays.** A ```` ```mermaid ````
-fence becomes `<div class="mermaid">` holding the same `esc()`-ed source every
+fence becomes `<pre class="mermaid">` holding the same `esc()`-ed source every
 other fence gets — `--&gt;`, not `-->`. The browser decodes entities on
 `textContent`, so mermaid parses the authored text while the markup never held
 a tag. Handing it raw source would be the only way to lose that, and it buys
@@ -462,7 +506,8 @@ machine. A missing bundle 404s and costs the diagram, not the question.
 **A `.mermaid` block is styled as code until mermaid claims it.** The
 `:not([data-processed])` rule is what makes a diagram that never renders — bad
 syntax, absent bundle, blocked script — degrade to readable source instead of an
-empty box. The reduced-motion reset needs no mermaid clause: it already wears
+empty box, and the `pre` under it is what keeps that source on more than one
+line where the rule itself never arrives. The reduced-motion reset needs no mermaid clause: it already wears
 `!important` on `*`, which beats mermaid's injected stylesheet whatever the
 order.
 
@@ -557,6 +602,12 @@ after changing the decision shape:
    again, deeper — not abandoning the decision and not answering it itself.
    Check it on a three-question page, where no question needs an answer first,
    and once the countdown has started, where the button greys out with Send.
+16. In the desktop app, with `CLAUDE_CODE_QUESTION_PREVIEW_FORMAT=html` reaching
+   the session: a tagged question draws the comparison beside the option list,
+   no browser window opens, and picking a card answers as usual. The reader's
+   own row is the marked one, an ordinal keeps its band, and a briefing's
+   pro/con glyphs are still there. A `multiSelect` question shows the plain
+   dialog. Then unset the variable and check the page comes back.
 
 Suites stub `cmux`, so a real launch is still worth one by-hand check: run
 `openUrl` against a temp file from a cmux session and confirm `cmux identify`

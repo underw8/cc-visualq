@@ -45,10 +45,9 @@ const DIR_GLYPH = { lower: '\u2193', higher: '\u2191' };
 // is good news, so the band is inverted rather than left saying `high` is
 // severe. Without an arrow the severity reading stands, since that is all the
 // word itself carries.
-const pill = (m, dir) => {
-  const rank = dir === 'higher' ? m.max - m.value : m.value;
-  return `<span class="pill ${BANDS[rank] || 'mid'}">${esc(m.raw)}</span>`;
-};
+const bandOf = (m, dir) => BANDS[dir === 'higher' ? m.max - m.value : m.value] || 'mid';
+
+const pill = (m, dir) => `<span class="pill ${bandOf(m, dir)}">${esc(m.raw)}</span>`;
 
 // Each entry is registered whole: `fits`, its `fallback`, and its `render`
 // (absent for `bars`, which draws inside the option cards instead of a
@@ -145,4 +144,4 @@ function renderChart(name, options, scale, shape, winners) {
   return render ? render(options, scale, shape, winners) : '';
 }
 
-module.exports = { shapeOf, pickForm, renderChart, markCell };
+module.exports = { shapeOf, pickForm, renderChart, markCell, bandOf, DIR_GLYPH };

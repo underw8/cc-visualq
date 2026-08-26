@@ -58,8 +58,12 @@ function readFence(lines, i) {
   for (; j < lines.length && !FENCE.test(lines[j]); j++) body.push(lines[j]);
   // j is the closer, or the end of input when the fence was never closed.
   const code = esc(body.join('\n'));
+  // A `pre`, which is mermaid's own container: until the bundle claims the
+  // block it is source, and only `pre` holds the newlines without a stylesheet
+  // behind it — which is the state a briefing is in wherever it travels
+  // outside the page.
   const html = lang === 'mermaid'
-    ? `<div class="mermaid">${code}</div>`
+    ? `<pre class="mermaid">${code}</pre>`
     : `<pre class="md-pre"><code>${code}</code></pre>`;
   return { html, next: j + 1 };
 }
@@ -96,8 +100,16 @@ function readList(lines, i) {
   for (; j < lines.length && BULLET.test(lines[j]); j++) run.push(lines[j]);
   const procon = tag === 'ul' && run.some((l) => PLUS.test(l));
   const items = run.map((l) => {
-    const cls = procon ? (PLUS.test(l) ? ' class="pro"' : ' class="con"') : '';
-    return `<li${cls}>${inline(l.replace(BULLET, ''))}</li>`;
+    const kind = procon ? (PLUS.test(l) ? 'pro' : 'con') : '';
+    // The glyph is markup, not a CSS `content`, because a briefing also travels
+    // to a host that renders it with no stylesheet of ours: valence has to
+    // survive there, and the glyph is what carries it. U+2212 for the con, not a
+    // hyphen: it matches the plus in width, keeping a mixed run on one left
+    // edge. The trailing space is for that same stylesheet-less surface, where
+    // the two would otherwise be flush; a grid item drops its leading white
+    // space, so the page is unaffected.
+    const mark = kind ? `<span class="g">${kind === 'pro' ? '+' : '\u2212'}</span> ` : '';
+    return `<li${kind ? ` class="${kind}"` : ''}>${mark}${inline(l.replace(BULLET, ''))}</li>`;
   });
   return {
     html: `<${tag} class="md-list${procon ? ' procon' : ''}">${items.join('')}</${tag}>`,

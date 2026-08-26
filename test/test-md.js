@@ -25,7 +25,7 @@ console.log('1. block types');
   const ul = renderMd('- a\n- b');
   has('unordered list', ul, '<ul class="md-list">');
   has('two items', ul, '<li>a</li><li>b</li>');
-  has('plus bullets', renderMd('+ a'), '<li class="pro">a</li>');
+  has('plus bullets', renderMd('+ a'), '<li class="pro"><span class="g">+</span> a</li>');
   has('star bullets', renderMd('* a'), '<li>a</li>');
   has('ordered list', renderMd('1. a\n2. b'), '<ol class="md-list">');
 
@@ -45,11 +45,14 @@ console.log('1. block types');
   // the only thing that changes is the wrapper: the source is escaped exactly
   // as any other fence, because the page reads it back with textContent.
   const mer = renderMd('```mermaid\nflowchart LR\n  A[x] --> B[y]\n```');
-  has('mermaid fence becomes a div', mer, '<div class="mermaid">');
+  has('mermaid fence becomes a pre', mer, '<pre class="mermaid">');
   has('mermaid source escaped like any fence', mer, 'A[x] --&gt; B[y]');
-  lacks('mermaid is not a pre', mer, 'md-pre');
+  lacks('but not a code block', mer, 'md-pre');
+  // A pre, not a div, so the source keeps its newlines wherever a briefing
+  // travels with no stylesheet of ours behind it.
+  has('the source keeps its newlines', mer, 'flowchart LR\n');
   has('mermaid language is case-insensitive',
-    renderMd('```MERMAID\ngraph TD\n```'), '<div class="mermaid">');
+    renderMd('```MERMAID\ngraph TD\n```'), '<pre class="mermaid">');
   lacks('another language stays a pre',
     renderMd('```js\nconst a = 1;\n```'), 'class="mermaid"');
   lacks('a bare fence stays a pre',
@@ -138,8 +141,8 @@ console.log('7. trade-off lists');
 {
   const mixed = renderMd('+ fast\n+ small\n- untyped');
   has('the run is marked', mixed, '<ul class="md-list procon">');
-  has('a plus is a pro', mixed, '<li class="pro">fast</li>');
-  has('a dash beside it is a con', mixed, '<li class="con">untyped</li>');
+  has('a plus is a pro', mixed, '<li class="pro"><span class="g">+</span> fast</li>');
+  has('a dash beside it is a con', mixed, '<li class="con"><span class="g">\u2212</span> untyped</li>');
   eq('two pros and one con', (mixed.match(/class="pro"/g) || []).length, 2);
 
   // `-` is the ordinary bullet marker. Styling every one of them as a drawback
@@ -155,7 +158,8 @@ console.log('7. trade-off lists');
   // The deciding plus can be the last line of the run, so the whole run is
   // collected before the call is made.
   has('a trailing plus still marks the run', renderMd('- a\n+ b'), 'procon');
-  has('and the earlier dash becomes a con', renderMd('- a\n+ b'), '<li class="con">a</li>');
+  has('and the earlier dash becomes a con', renderMd('- a\n+ b'),
+    '<li class="con"><span class="g">\u2212</span> a</li>');
 
   lacks('an ordered list is never a trade-off list', renderMd('1. a\n2. b'), 'procon');
 
