@@ -108,21 +108,38 @@ load outright with `Duplicate hooks file detected`. The key is only for
 **`updatedInput` replaces the entire tool input.** Partial objects drop fields.
 Echo `questions` back whole, always.
 
+**Asking again is a deny, not an answer.** The reader who clicks `↻ Ask again`
+has chosen nothing, so `/again` emits `permissionDecision: "deny"` carrying
+`AGAIN` as the reason. Routing it through the free-text field instead would
+fake a choice on every question on the page — the length check at the end of
+`/answer` requires one answer per question — and an answer makes Claude
+*proceed* where the whole point is to stop and ask again. `permissionDecisionReason`
+reaches the model rather than the reader, which is why `AGAIN` names the forms
+the page can draw instead of describing the reader's disappointment. Nothing
+enforces the re-ask: Claude reads the reason and complies, so the behaviour is
+contracted in `hooks/askq-rule.md`, which says a denial of this shape is a
+request for a deeper question rather than a refusal. Without that line a denied
+tool call reads as "do not retry".
+
 **`permissionDecision: "allow"` on `AskUserQuestion` skips the dialog entirely.**
 It is only correct when paired with an `answers` map the user actually chose.
 `"allow"` alone is not sufficient for this tool. Use `"ask"` to modify input while
 keeping the user in the loop.
 
-**Only `/answer` checks the nonce.** It is the one route that speaks for the
-user, so it is the one route worth authenticating. `/cancel` settles the hook
-identically whatever it carries — the outcome is the question the terminal
-dialog would have asked anyway — so a nonce there would gate a status code
-nobody reads. Both routes still cap the body they accept.
+**A route is authenticated when it changes what Claude does next.** `/answer`
+speaks for the user and `/again` denies the call, so both check the nonce
+through the one `sameNonce`. `/cancel` settles the hook identically whatever it
+carries — the outcome is the question the terminal dialog would have asked
+anyway — so a nonce there would gate a status code nobody reads. Every route
+caps the body it accepts.
 
-**The page has one ending, reached three ways.** Sending, handing back, and
-noticing the hook has gone all land in `finish()`, which writes a fixed literal
-and sets the words through `textContent`, then counts down and calls
-`window.close()`. One 1s interval drives every timed thing on the page: the
+**The page has one ending, reached four ways.** Sending, asking again, handing
+back, and noticing the hook has gone all land in `finish()`, which writes a
+fixed literal and sets the words through `textContent`, then counts down and
+calls `window.close()`. The first three go through `post()`, which is what keeps
+a new exit from hand-rolling its own fetch; they differ only in what a dead
+server means, and handing back alone reaches the same place either way, since
+the terminal dialog is the outcome whether or not the POST arrived. One 1s interval drives every timed thing on the page: the
 countdown, the expiry, and a `/ping` on every third beat. The ping is there
 because an aborted hook — Ctrl-C, or a question answered in the terminal —
 closes the server without telling the browser, and waiting out the full 240s
@@ -536,6 +553,10 @@ after changing the decision shape:
    all: 3.4MB is the cost of getting that gate wrong. Then delete
    `vendor/mermaid.min.js` and ask again — the diagram degrades to source and
    the cards still answer.
+15. `↻ Ask again, with more` ends the page and Claude poses the same question
+   again, deeper — not abandoning the decision and not answering it itself.
+   Check it on a three-question page, where no question needs an answer first,
+   and once the countdown has started, where the button greys out with Send.
 
 Suites stub `cmux`, so a real launch is still worth one by-hand check: run
 `openUrl` against a temp file from a cmux session and confirm `cmux identify`

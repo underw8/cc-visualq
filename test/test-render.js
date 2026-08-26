@@ -42,6 +42,7 @@ console.log('2. the page shell');
   has('cards are buttons carrying their label', page, 'data-label="Svelte"');
   has('the footer offers send', page, 'id="send"');
   has('and offers handing back', page, 'id="cancel"');
+has('and offers asking again', page, 'id="again"');
 }
 
 console.log('3. escaping');
@@ -247,8 +248,13 @@ console.log('12. every ending closes the page');
 {
   const page = renderPage(Q([{ label: 'A', description: 'x. {c:1}' }]),
     { nonce: 'ab'.repeat(16), waitMs: 1000 });
-  has('sending ends in the closing screen', page, "finish('Answer sent");
-  has('handing back ends in it too', page, "finish('Answer this one");
+  has('one function closes the page', page, 'finish(headline)');
+  has('sending posts the answer', page, "post('/answer'");
+  has('and closes on its own headline', page, "'Answer sent");
+  has('handing back posts the cancel', page, "post('/cancel'");
+  has('and closes on its own too', page, "'Answer this one");
+  has('asking again posts the retry', page, "post('/again'");
+  has('and closes on its own as well', page, "'Asking again");
   has('a vanished hook ends in it as well', page, 'no longer waiting');
   has('liveness is polled', page, "fetch('/ping')");
   has('the closing screen counts down', page, 'Closing in ');

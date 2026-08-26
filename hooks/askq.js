@@ -41,6 +41,22 @@ function respond(out) {
 // Emitting nothing means "no decision": the terminal dialog handles the question.
 const passThrough = () => respond(null);
 
+// Timing-safe compare on equal-length hex strings.
+function sameNonce(given, nonce) {
+  const a = Buffer.from(String(given || ''));
+  const b = Buffer.from(nonce);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// What "ask again" says to the model. It is read by Claude, not the reader, so
+// it names the forms the page can draw rather than describing the disappointment.
+const AGAIN =
+  'The reader could not decide from this question and asked for it again, deeper. '
+  + 'Ask it again: state what forces the choice, what the numbers were measured on, '
+  + 'and what breaks if it goes the wrong way. Add a mermaid diagram where the '
+  + 'explanation is a shape, more metric keys, exact values via chart: matrix, and a '
+  + 'direction on every key where one end is better. Do not repeat the question unchanged.';
+
 function main(raw) {
   let input;
   try {
@@ -125,6 +141,34 @@ function main(raw) {
       req.on('end', () => { res.writeHead(204).end(); giveUp(); });
       return;
     }
+    // Asking again is not an answer, so it does not travel the answer path: a
+    // deny blocks the call and the reason reaches the model rather than the
+    // reader. Nonce-checked because it decides what Claude does next.
+    if (req.method === 'POST' && req.url.startsWith('/again')) {
+      let abuf = '';
+      const guard = tooBig(req, res, 4_000);
+      req.on('data', (c) => { abuf += c; guard(abuf); });
+      req.on('end', () => {
+        let given = '';
+        try { given = JSON.parse(abuf)?.nonce; } catch { /* falls to the compare */ }
+        if (!sameNonce(given, nonce)) {
+          res.writeHead(403).end();
+          return giveUp();
+        }
+        res.writeHead(204).end();
+        if (settled) return;
+        settled = true;
+        server.close();
+        respond({
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: AGAIN,
+          },
+        });
+      });
+      return;
+    }
     if (req.method !== 'POST' || !req.url.startsWith('/answer')) {
       res.writeHead(404).end();
       return;
@@ -136,10 +180,7 @@ function main(raw) {
       let picked, other, notes;
       try {
         const parsed = JSON.parse(buf);
-        // Timing-safe compare on equal-length hex strings.
-        const a = Buffer.from(String(parsed.nonce || ''));
-        const b = Buffer.from(nonce);
-        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        if (!sameNonce(parsed.nonce, nonce)) {
           res.writeHead(403).end();
           giveUp();
           return;

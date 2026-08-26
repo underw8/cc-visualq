@@ -37,7 +37,7 @@ http.get(url, (res) => {
       });
     }
     if (strategy.action === 'none') return;
-    const route = strategy.action === 'cancel' ? '/cancel' : '/answer';
+    const route = { cancel: '/cancel', again: '/again' }[strategy.action] || '/answer';
     const body = strategy.oversized
       ? 'x'.repeat(70 * 1024)
       : JSON.stringify({
@@ -256,6 +256,8 @@ const Q_SINGLE = {
       : bad('notes', 'no .notes in page');
     r.page.includes('id="cancel"') ? ok('cancel button present')
       : bad('cancel', 'no #cancel in page');
+    r.page.includes('id="again"') ? ok('ask-again button present')
+      : bad('again', 'no #again in page');
     r.page.includes('maxlength="2000"') ? ok('length capped in the page too')
       : bad('maxlength', 'no maxlength on the inputs');
   }
@@ -315,6 +317,27 @@ const Q_SINGLE = {
     eq('answer key is the stripped question, not the raw one',
       Object.keys(answers || {}), ['Which framework?']);
     eq('label is the value', answers?.['Which framework?'], 'Svelte');
+  }
+
+  console.log('22. ask again blocks the call and tells the model to go deeper');
+  {
+    const r = await run(ONE_Q, { action: 'again' });
+    const hso = r.json?.hookSpecificOutput;
+    eq('decision is deny', hso?.permissionDecision, 'deny');
+    eq('no answer invented', 'updatedInput' in (hso || {}), false);
+    eq('POST accepted (204)', r.status, '204');
+    const why = hso?.permissionDecisionReason || '';
+    /ask it again/i.test(why) ? ok('reason directs a re-ask')
+      : bad('reason directs a re-ask', `got [${why}]`);
+    /mermaid/.test(why) && /matrix/.test(why) ? ok('reason names the richer forms')
+      : bad('reason names the richer forms', `got [${why}]`);
+  }
+
+  console.log('23. ask again with a wrong nonce emits nothing');
+  {
+    const r = await run(ONE_Q, { action: 'again', badnonce: true });
+    eq('403 on bad nonce', r.status, '403');
+    eq('no decision emitted', r.out, '');
   }
 
   // The page polls this to notice an aborted hook instead of waiting out the

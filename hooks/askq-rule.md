@@ -64,3 +64,10 @@ it only when the labels alone settle the choice.
   draws. Keep it under ~15 nodes: past that it stops being one glance. Mistyped
   mermaid renders as its own source, so a diagram costs a code block at worst.
 - A briefing that restates the options is worse than none.
+
+## When the question comes back denied
+
+A denied `AskUserQuestion` whose reason says the reader asked for it again is a
+request for a deeper question, not a refusal. Ask the same question over, with
+the briefing, diagram and metric keys the reason names. Do not abandon the
+decision or answer it yourself.

@@ -15,6 +15,7 @@ const pageScript = (nonce, count, waitMs) => `<script>
   var picked = Object.create(null);           // qIndex -> [labels]
   var other = Object.create(null), notes = Object.create(null);
   var cancel = document.getElementById('cancel');
+  var again = document.getElementById('again');
   var status = document.getElementById('status'), send = document.getElementById('send');
   var jump = document.getElementById('jump'), gap = null;
 
@@ -103,6 +104,7 @@ const pageScript = (nonce, count, waitMs) => `<script>
     if (Date.now() >= DEADLINE) {
       expired = true;
       send.disabled = true;
+      again.disabled = true;
       status.textContent = 'Expired \\u2014 answer in the terminal.';
       return;
     }
@@ -216,36 +218,47 @@ const pageScript = (nonce, count, waitMs) => `<script>
     if (first) first.focus();
   });
 
+  // Every way off the page is one shape: close the footer, post the nonce, land
+  // in finish(). They differ only in what a dead server means. Handing back
+  // reaches the same place either way, since the terminal dialog is the
+  // outcome whether or not the POST arrived.
+  function post(route, body, headline, onGone) {
+    send.disabled = true; cancel.disabled = true; again.disabled = true;
+    fetch(route, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function () {
+      finish(headline);
+    }).catch(onGone || function () { finish(headline); });
+  }
+
+  // The wait elapsed or the question was already answered in the terminal.
+  // Nothing to retry against, and nothing this page can still change.
+  function gone() {
+    status.textContent =
+      'This question is no longer waiting \\u2014 it will be asked in the terminal.';
+  }
+
   // Send carries no confirmation step: the selection is on screen, the button
   // is disabled until every question has an answer, and the terminal dialog
   // this page stands in for does not confirm either.
   send.addEventListener('click', function () {
-    send.disabled = true; status.textContent = 'Sending\\u2026';
-    fetch('/answer', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ nonce: NONCE, picked: picked, other: other, notes: notes })
-    }).then(function () {
-      finish('Answer sent \\u2014 back to the terminal.');
-    }).catch(function () {
-      // The server is gone: the wait elapsed or the question was already
-      // answered in the terminal. Nothing to retry against.
-      send.disabled = true;
-      status.textContent =
-        'This question is no longer waiting \\u2014 it will be asked in the terminal.';
-    });
+    status.textContent = 'Sending\\u2026';
+    post('/answer', { nonce: NONCE, picked: picked, other: other, notes: notes },
+      'Answer sent \\u2014 back to the terminal.', gone);
+  });
+
+  // Asking again answers nothing: the hook denies the call and the reason tells
+  // Claude to pose the same question with more behind it.
+  again.addEventListener('click', function () {
+    status.textContent = 'Asking again\\u2026';
+    post('/again', { nonce: NONCE },
+      'Asking again \\u2014 with more detail.', gone);
   });
 
   cancel.addEventListener('click', function () {
-    cancel.disabled = true; send.disabled = true;
     status.textContent = 'Handing back…';
-    fetch('/cancel', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ nonce: NONCE })
-    }).then(function () {
-      finish('Answer this one in the terminal.');
-    }).catch(function () {
-      finish('Answer this one in the terminal.');
-    });
+    post('/cancel', { nonce: NONCE }, 'Answer this one in the terminal.');
   });
 })();
 </script>`;

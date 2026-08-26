@@ -28,7 +28,9 @@ description, the chart appears:
 ```
 
 The `{key:value, ...}` tag is stripped before the dialog renders, so the
-terminal still shows a clean description. Options without a tag get no chart and
+terminal still shows a clean description. If the page doesn't tell you enough to
+choose, `↻ Ask again, with more` closes it and Claude poses the same question
+again with a fuller briefing, a diagram and more of the comparison. Options without a tag get no chart and
 no browser — the question behaves exactly as it would without the plugin.
 
 A `SessionStart` hook injects an option-authoring rule (`hooks/askq-rule.md`)
@@ -69,10 +71,16 @@ sequenceDiagram
             B->>H: GET / with nonce
             Note over H: arrived = true
             B->>H: GET /ping every 3s
-            B->>H: POST /answer with nonce, picked, other, notes
-            H->>H: timing-safe nonce compare
-            H->>H: filter labels against the tool's own set
-            H-->>CC: allow + updatedInput.answers
+            alt a card was clicked
+                B->>H: POST /answer with nonce, picked, other, notes
+                H->>H: timing-safe nonce compare
+                H->>H: filter labels against the tool's own set
+                H-->>CC: allow + updatedInput.answers
+            else asked again
+                B->>H: POST /again with nonce
+                H-->>CC: deny + reason: ask it again, deeper
+                Note over CC: same question, fuller briefing and chart
+            end
         end
     end
 ```

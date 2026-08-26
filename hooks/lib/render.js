@@ -194,11 +194,16 @@ const STYLES = `
             transition:color var(--mid), border-color var(--mid); }
   #scheme:hover { color:var(--fg); border-color:var(--accent); }
   #scheme[hidden] { display:none; }
-  #cancel { margin-left:auto; font:inherit; padding:.5rem 1rem; border-radius:7px; cursor:pointer;
+  /* Asking again and handing back are the same weight of secondary action, so
+     they share the ghost treatment and only the auto margin differs. */
+  #again, #cancel { font:inherit; padding:.5rem 1rem; border-radius:7px; cursor:pointer;
             border:1px solid var(--line); background:transparent; color:var(--mut);
             transition:color var(--mid), border-color var(--mid), background-color var(--mid); }
-  #cancel:hover { color:var(--fg); border-color:var(--accent);
+  #again:hover:not([disabled]), #cancel:hover:not([disabled]) { color:var(--fg);
+            border-color:var(--accent);
             background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  #again { margin-left:auto; }
+  #again[disabled] { opacity:.45; cursor:not-allowed; }
   .brief { background:var(--card); border:1px solid var(--line); border-radius:9px;
            padding:1rem 1.15rem; margin:0 0 1.25rem; }
   .card-brief { background:transparent; border:0; border-top:1px solid var(--line);
@@ -379,6 +384,7 @@ const SCHEME = `<button id="scheme" type="button" hidden
 
 const FOOTER = `<footer><span id="status">Pick an option.</span>
 <button id="jump" type="button" hidden></button>
+<button id="again" type="button">↻ Ask again, with more</button>
 <button id="cancel" type="button">Answer in terminal</button>
 <button id="send" disabled>Send answer</button></footer>`;
 
