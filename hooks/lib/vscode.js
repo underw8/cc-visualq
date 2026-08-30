@@ -27,8 +27,8 @@ const paths = (dir) => ({
   marker: path.join(dir, '.vscode', '.askq-restore.json'),
 });
 
-// Block without spinning: the page must be open before the association goes
-// away, and the hook has no event to wait on.
+// Block without spinning: the association has to be in VS Code's config before
+// the editor opens, and the hook has no event to wait on.
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 // A previous run died before putting the file back.
@@ -68,7 +68,7 @@ function merged(original) {
 // `dir` must be the folder VS Code has open, since that is what the browser
 // trusts. Returns false whenever anything is not as expected, so the caller
 // falls through to the next launcher rather than showing markup as text.
-function openInVSCode(url, dir, { settleMs = 2500 } = {}) {
+function openInVSCode(url, dir, { settleMs = 1000 } = {}) {
   if (!dir) return false;
   try {
     if (!fs.statSync(dir).isDirectory()) return false;
@@ -88,6 +88,10 @@ function openInVSCode(url, dir, { settleMs = 2500 } = {}) {
 
   try {
     fs.writeFileSync(p.settings, next, 'utf8');
+    // VS Code reloads settings from a watcher, so the association is not in
+    // effect the instant the file lands. Opening before it is read resolves the
+    // stub to the text editor, which shows markup instead of the page.
+    pause(settleMs);
     // The rendered stub navigates itself to the loopback page; `code` cannot
     // be handed that URL directly.
     // The browser editor stays bound to the file it was opened with, so
@@ -102,9 +106,6 @@ setTimeout(function () { window.close(); }, 800);
 `, 'utf8');
     const r = spawnSync('code', ['-r', stub], { timeout: 10000, encoding: 'utf8' });
     if (r.error || r.status !== 0) return false;
-    // The association is read when the editor opens, so it has to outlive the
-    // command by a moment.
-    pause(settleMs);
     return true;
   } finally {
     if (original === null) fs.rmSync(p.settings, { force: true });

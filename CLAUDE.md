@@ -247,8 +247,11 @@ handler, so `open` reaches it once shipped.
 handed a URL: the browser editor registers the `file` scheme only. A stub file
 is rendered instead and navigates itself to the loopback page. Which editor
 opens it is decided by `workbench.editorAssociations`, which no CLI can read
-back, so `lib/vscode.js` writes the entry, opens, waits for the editor to read
-it, and puts the file back byte for byte. The browser refuses any file outside a
+back, so `lib/vscode.js` writes the entry, waits for VS Code's settings watcher
+to pick it up, opens, and puts the file back byte for byte. The wait is on that
+side of the open: the association has to be in effect when the editor resolves
+the file, and an open that beats the watcher lands the stub in the text editor,
+showing markup instead of the page. The browser refuses any file outside a
 trusted root — `os.tmpdir()` is not one, the open workspace folder is — so both
 the stub and the settings live under `CLAUDE_PROJECT_DIR`.
 
