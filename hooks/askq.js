@@ -28,7 +28,7 @@ const { withPreviews } = require('./lib/preview.js');
 
 // Must stay below the hook's configured `timeout` so the process exits on its
 // own terms and the dialog appears, rather than being killed mid-write.
-const WAIT_MS = 240_000;
+const WAIT_MS = 900_000;
 // The launcher reports that it ran, not that a browser appeared — `cmux
 // disable-browser` exits 0 showing nothing, and `open` reports nothing at all.
 // A page nobody has fetched by now is a page nobody will answer.

@@ -91,8 +91,8 @@ sequenceDiagram
 ```
 
 Three ways the hook stops waiting without an answer: `ARRIVE_MS` 10s with
-nothing fetching the page, `WAIT_MS` 240s with nothing posting, or a rejected
-POST giving up. `WAIT_MS` stays below the hook entry's `timeout: 300` so the
+nothing fetching the page, `WAIT_MS` 900s with nothing posting, or a rejected
+POST giving up. `WAIT_MS` stays below the hook entry's `timeout: 960` so the
 process exits on its own terms instead of being killed mid-write.
 
 ### Modules

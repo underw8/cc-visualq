@@ -152,7 +152,7 @@ server means, and handing back alone reaches the same place either way, since
 the terminal dialog is the outcome whether or not the POST arrived. One 1s interval drives every timed thing on the page: the
 countdown, the expiry, and a `/ping` on every third beat. The ping is there
 because an aborted hook — Ctrl-C, or a question answered in the terminal —
-closes the server without telling the browser, and waiting out the full 240s
+closes the server without telling the browser, and waiting out the full 900s
 deadline leaves a dead page on screen.
 
 **A host that draws the preview itself gets no page at all.** The desktop app
@@ -208,11 +208,11 @@ out or writes no JSON renders no decision, and the call continues through the
 normal permission flow — the terminal dialog answers as usual. Every rejection
 path in `askq.js` must reach `passThrough()` or `giveUp()`; never answer on
 the user's behalf and never hold the process waiting once the page has had its
-turn (a rejected POST that keeps waiting stalls the dialog for the full 240s).
+turn (a rejected POST that keeps waiting stalls the dialog for the full 900s).
 
 **`WAIT_MS` must stay below the hook entry's `timeout`.** Otherwise Claude Code
 kills the process mid-write instead of letting it exit and hand off. `WAIT_MS`
-is 240s and `hooks/hooks.json` ships `timeout: 300`. `ARRIVE_MS` is the other
+is 900s and `hooks/hooks.json` ships `timeout: 960`. `ARRIVE_MS` is the other
 half: ten seconds with nothing fetching the page means no browser is coming, so
 the hook hands back rather than holding the dialog for the full wait.
 

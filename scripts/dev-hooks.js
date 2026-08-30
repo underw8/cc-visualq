@@ -19,7 +19,7 @@ const ENTRIES = {
     matcher: 'AskUserQuestion',
     hooks: [{
       type: 'command',
-      timeout: 300,
+      timeout: 960,
       command: 'node "${CLAUDE_PROJECT_DIR}/hooks/askq.js"',
     }],
   },
